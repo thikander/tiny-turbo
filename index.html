@@ -1545,7 +1545,9 @@ registerProcessor('engine-synth', EngineProc);`;
     OBJS.length=0;
     for(let n=n1;n>=n0-12;n--) decor(n,segAt(n),OBJS);
     for(const c of road.cars){ const z=c.pos-CAM.s; if(z+CARDIM[c.type].len>NEAR&&z<DRAW) OBJS.push({s:c.pos,t:"car",c,len:CARDIM[c.type].len}); }
-    OBJS.sort((a,b)=>b.s-a.s);
+    // buildings line the road behind everything else (lamps, signs, cars are all nearer the road),
+    // so they go first; sorting only by distance let a long building wall paint over a lamp in front of it
+    OBJS.sort((a,b)=>((b.t==="bld")-(a.t==="bld"))||(b.s-a.s));
     for(const o of OBJS){
       const len=o.len||(o.t==="rail"||o.t==="tunnel"?SEG:o.t==="pole"?10*SEG:0);
       if(o.s+len<CAM.s+NEAR) continue;
