@@ -81,6 +81,7 @@ The constants live in `P`. They describe a 1150 kg car with 0.30 m wheels, a fin
   - **Manual:** the `+`/`-` keys; it holds the gear into the limiter.
   - **L:** holds a low ratio.
   - **Step shift effects:** a torque cut on upshifts, a throttle blip on downshifts, and a `thump` event.
+- **Tuning:** `TUNES` (stock, stage1–3) set `P.maxTq`, `P.boost`/`P.boostSport`, `P.limit`, `P.lag` (turbo spool threshold) and `P.flowK` (top-end breathing) via `setTune(i)`. `peakPS()` runs a short virtual dyno on a fresh sim. `P.vmax` (0 or 180) is the optional speed limiter (`S.vcut`). Saved as `mdc-tune` and `mdc-vmax`. Stock values are unchanged, so `tools/sim-check.js` output is the same.
 - **Gear rules:** leaving P needs the brake (`S.brake ≥ 0.3`). P and R are blocked above 6 km/h. The engine starts only in P or N. Refused actions call `flash(msg)`, which also emits `{type:"msg"}`; the help dialog shows tips for those.
 - **Gauges:** temperatures, oil pressure (depends on oil temperature and level), voltage, fuel use (BSFC model), odometer and trip.
 - **Events:** `hooks.event` emits `bov`, `thump{amt}`, `lever` and `msg{msg}`. They go to the audio, mochi and dialog handlers through `onSimEvent`, which is chained (each module wraps the one before it).
@@ -142,6 +143,8 @@ The constants live in `P`. They describe a 1150 kg car with 0.30 m wheels, a fin
   | `mdc-help-seen` | `1` once the help has been seen |
   | `mdc-traffic` | `on` or `off` (default on) |
   | `mdc-cluster-style` | `analog` or `digital` (default digital; **only saved when the user clicks**) |
+  | `mdc-tune` | `0`–`3` (stock to stage 3) |
+  | `mdc-vmax` | `1` when the 180 km/h limiter is on |
   | `mdc-car` | JSON: odometer, trip, tripFuel, fuel, oilLevel (saved every 5 s and on pagehide) |
 
 - **Mobile:**

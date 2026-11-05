@@ -199,6 +199,8 @@
   <button id="btnKeys" class="mb on" type="button"><i class="led"></i><span data-t="keys">KEYS</span></button>
   <button id="btnPad" class="mb" type="button"><i class="led"></i><span data-t="pad">PAD</span></button>
   <button id="btnTraffic" class="mb" type="button"><i class="led"></i><span data-t="traffic">TRAFFIC</span></button>
+  <button id="btnTune" class="mb" type="button"><span data-t="tune">TUNE</span>&nbsp;<b id="tuneName">STOCK</b></button>
+  <button id="btnVmax" class="mb" type="button"><i class="led"></i><span data-t="vmax">180 LIMIT</span></button>
   <button id="btnCluster" class="mb" type="button" aria-label="Cluster style"><b>ANALOG</b>/DIGI</button>
   <button id="btnHelp" class="mb" type="button"><span data-t="help">HELP</span></button>
   <button id="btnLang" class="mb" type="button" aria-label="Language"><b>TH</b>/EN</button>
@@ -286,14 +288,14 @@ class EngineSynth {
     this.tPh=0;this.sPh=0;this.wPh=0;this.thPh=0;this.sqPh=0;this.zPh=0;this.pPh=0;this.rvPh=0;this.rvT=0.9;this.tf=1000;this.wf=600;this.vib=0;
     this.bov=0;this.bovAmt=0;this.bovAge=1;
     this.thump=0;this.thumpAmt=0;this.thumpF=48;this.click=0;this.popEnv=0;
-    this.pump=0;this.zing=0;this.creak=0;this.crash=0;this.glass=0;this.drop=0;this.thunder=0;this.thF=new SVF();this.thF.set(110,0.7,sr);
+    this.pump=0;this.zing=0;this.creak=0;this.crash=0;this.glass=0;this.drop=0;this.thunder=0;this.crq=[];this.crk=0;this.crkHP=0;this.crkLP=0;this.thF=new SVF();this.thF.set(110,0.7,sr);
     this.squeal=false;this.sqF=3300;this.brakePrev=0;
     this.q=[];
     this.seed=22222;this.ctr=0;
     const e=(tc)=>Math.exp(-1/(sr*tc)); this.e=e;
     this.thDecay=e(0.075);this.clDecay=e(0.0035);this.popDecay=e(0.03);
     this.clickF.set(3200,0.9,sr);this.bovF2.set(650,1.3,sr);this.wind.set(1000,0.5,sr);
-    this.popF.set(1500,0.7,sr);this.starterF.set(1150,1.6,sr);this.drone.set(96,4.5,sr);
+    this.popF.set(2400,0.6,sr);this.starterF.set(1150,1.6,sr);this.drone.set(96,4.5,sr);
     this.raspF.set(2700,0.75,sr);this.mechF.set(5400,1.8,sr);this.wgF.set(1700,1.1,sr);this.padF.set(2600,1.2,sr);
     this.rainF.set(4200,0.6,sr);this.creakF.set(520,7,sr);this.glassF.set(6200,4,sr);this.dropF.set(3000,3,sr);this.crashF.set(400,0.7,sr);
     this.updateFilters();
@@ -312,7 +314,10 @@ class EngineSynth {
       this.sched(n*0.055,0,0.8,1500,0.005); this.sched(n*0.055,1,0.1,60,0.05); }
     else if(T==='tick'){ this.fireNow(0,e.amt,e.on?3100:1850,e.on?0.003:0.0045); }
     else if(T==='thump'){ this.fireNow(1,e.amt,48,0.075); }
-    else if(T==='pop'){ const j=this.pi; this.pi=(this.pi+1)%this.NP; this.pa[j]=1.1+0.9*e.amt; this.pt[j]=0; this.ptau[j]=0.00032; this.popEnv=0.5+0.5*e.amt; }
+    else if(T==='pop'){ // overrun crackle: a quick irregular burst of sharp snaps, plus a small muffled thud
+      const j=this.pi; this.pi=(this.pi+1)%this.NP; this.pa[j]=0.25+0.25*e.amt; this.pt[j]=0; this.ptau[j]=0.0005;
+      const n=2+((this.rnd()*5)|0); let t=0;
+      for(let i=0;i<n;i++){ t+=0.008+this.rnd()*0.03; this.crq.push([Math.round(t*this.sr),(0.35+this.rnd()*0.65)*(1-i/(n+1))*(0.6+0.4*e.amt)]); } }
     else if(T==='solenoid'){ this.fireNow(0,1.0,1650,0.007); this.sched(0,1,0.32,85,0.04); }
     else if(T==='catch'){ this.zing=1; this.zPh=0; }
     else if(T==='shutoff'){ this.sched(0.05,1,0.55,26,0.11); this.sched(0.26,1,0.25,32,0.08); }
@@ -476,7 +481,13 @@ class EngineSynth {
       if(this.thunder>0.001){ this.thF.run(nz); ex+=this.thF.lp*this.thunder*2.4*(0.55+0.45*Math.sin(this.ctr*0.00031)*Math.sin(this.ctr*0.00007)); this.thunder*=Math.exp(-dt/1.7); }
       // overrun crackle burst
       let pop=0;
-      if(this.popEnv>0.001){ pop=this.popF.run(nz)*this.popEnv*0.45; this.popEnv*=this.popDecay; }
+      if(this.crq.length){ for(let k=this.crq.length-1;k>=0;k--){ const c=this.crq[k]; if(c[0]--<=0){ this.crk=Math.max(this.crk,c[1]); this.crq.splice(k,1); } } }
+      if(this.crk>0.001){
+        // each snap: a few ms of bright noise (high-passed), slightly darkened by the muffler
+        const x=nz*this.crk; this.crkHP+=(x-this.crkHP)*0.35; const hp=x-this.crkHP; this.crkLP+=(hp-this.crkLP)*0.55;
+        pop=(this.crkLP*0.8+this.popF.run(x)*0.5)*0.55; this.crk*=0.9965;
+        if(this.crk<0.02) this.crk=0;
+      }
 
       let o=eng*0.4+intake+mech+whistle+whoosh+wgate+bov+st+zing+pump+whine+road+wind+brk+rev+rain+th+cl+ex+pop;
       // tunnel echo
@@ -511,6 +522,7 @@ registerProcessor('engine-synth', EngineProc);`;
     const P = {
       mass:1150, rw:0.30, fd:5.5, eta:0.90, cdA:0.436, roll:135,
       Ie:0.16, idle:760, limit:6500, limitResume:6330, maxTq:210,
+      boost:0.9, boostSport:1.0, lag:0.1, flowK:1, vmax:0,
       rMin:0.40, rMax:2.60, rRev:2.20, steps:[2.60,1.85,1.38,1.06,0.84,0.66,0.52],
       Cs:0.0029, tankL:40
     };
@@ -525,7 +537,7 @@ registerProcessor('engine-synth', EngineProc);`;
       gear:"P", manual:false, dstep:false, dstepOff:0, vgear:0, shiftT:0, tqCutT:0, blipT:0, shiftFlash:0,
       pedal:0, brake:0, handbrake:false, v:0, w:0, rpm:0, ratio:P.rMax, lock:false, engage:0,
       turbo:0, map:1.0, thr:0, idleI:0.08, comb:0, cut:true, limiter:false, decelCut:false,
-      bovCool:0, bovT:0, popWin:0, prevPedal:0,
+      bovCool:0, bovT:0, popWin:0, prevPedal:0, vcut:false,
       fuel:72, coolant:24, oilTemp:24, oilLevel:98, oilPressure:0, voltage:12.5, odometer:12345.6, trip:0,
       grade:0, lph:0, tripFuel:0,
       msg:"", msgT:0, P
@@ -576,12 +588,12 @@ registerProcessor('engine-synth', EngineProc);`;
         if(stepped){
           if(S.shiftT<=0){
             if(!S.manual){
-              const up=g==="S"?Math.min(6250,2300+3950*pedal):6050;
+              const up=g==="S"?Math.min(P.limit-250,2300+3950*pedal):P.limit-450;
               const down=g==="S"?1400+1900*pedal+S.brake*1500:2700;
               if(S.rpm>up && S.vgear<6 && kmh>6) doShift(1);
               else if(S.vgear>0 && S.rpm<down && kmh>6){
                 const after=S.rpm*P.steps[S.vgear-1]/P.steps[S.vgear];
-                if(after<5700) doShift(-1);
+                if(after<P.limit-800) doShift(-1);
               }
             } else if(S.rpm<1050 && S.vgear>0 && S.lock) doShift(-1);
           }
@@ -624,22 +636,24 @@ registerProcessor('engine-synth', EngineProc);`;
       // ---- fuel cut: rev limiter + deceleration fuel cut
       if(running){
         if(rpm>P.limit) S.limiter=true; else if(rpm<P.limitResume) S.limiter=false;
+        // optional 180 km/h speed limiter (JDM style): fuel cut above the limit, back on 3 km/h below
+        if(P.vmax){ const k=Math.abs(S.v)*3.6; if(k>P.vmax) S.vcut=true; else if(k<P.vmax-3) S.vcut=false; } else S.vcut=false;
         const coast=pedal<0.02 && ((S.lock && S.v>6) || ((S.gear==="P"||S.gear==="N") && rpm>1700));
         if(coast && rpm>1150) S.decelCut=true; else if(!coast || rpm<1000) S.decelCut=false;
       } else { S.limiter=false; S.decelCut=false; }
-      S.cut=!running||S.limiter||S.decelCut||S.fuel<=0;
+      S.cut=!running||S.limiter||S.vcut||S.decelCut||S.fuel<=0;
       S.thr=thr;
 
       // ---- manifold pressure + turbo
       const x=0.03+25*Math.pow(thr,2.2);
       const mapNA=Math.max(0.2,x/(x+rpm*0.0005+0.002));
       const sport=S.gear==="S"||S.manual;
-      const maxBoost=sport?1.0:0.9;
+      const maxBoost=sport?P.boostSport:P.boost;
       const boostAvail=maxBoost*Math.pow(clamp((S.turbo-0.22)/0.55,0,1),1.3);
       const mapT=mapNA*(1+boostAvail*Math.pow(mapNA,4));
       S.map+=(mapT-S.map)*Math.min(1,h*(mapT>S.map?9:14));
       const flow=(rpm/6000)*(S.cut?0.3:S.map);
-      const sT=Math.pow(clamp((flow-0.1)/0.85,0,1.1),0.8);
+      const sT=Math.pow(clamp((flow*P.flowK-P.lag)/(0.95-P.lag),0,1.1),0.8);
       const tRate=sT>S.turbo?0.5+2.4*flow:(S.bovT>0?1.7:0.8);
       S.turbo+=(sT-S.turbo)*clamp(tRate*h,0,1);
 
@@ -653,7 +667,7 @@ registerProcessor('engine-synth', EngineProc);`;
 
       // ---- engine torque
       let comb=0;
-      if(!S.cut) comb=Math.min(P.maxTq,naTorque(rpm)*Math.max(0,(S.map-0.16)/0.84))*(S.tqCutT>0?0.55:1);
+      if(!S.cut) comb=Math.min(P.maxTq,naTorque(rpm)*(1+(P.flowK-1)*clamp((rpm-2500)/3000,0,1))*Math.max(0,(S.map-0.16)/0.84))*(S.tqCutT>0?0.55:1);
       S.comb=comb;
       const fric=rpm>5?8+rpm*0.0026+(S.oilTemp<40?4:0):0;
       const pump=rpm>5?(1-Math.min(1,S.map))*14:0;
@@ -763,7 +777,23 @@ registerProcessor('engine-synth', EngineProc);`;
       if(S.engine!=="off") hooks.event({type:"shutoff"});
       S.engine="off"; S.ignition=false; S.crankPending=-1; S.lock=false;
     }
-    return { S, P, step, selectGear, manualShift, ignitionPress };
+    // realistic tuning stages: what a JDM 1.3 turbo typically gets at each step
+    const TUNES=[
+      {id:"stock", maxTq:210, boost:0.9, boostSport:1.0, limit:6500, lag:0.10, flowK:1.00},
+      {id:"stage1",maxTq:245, boost:1.1, boostSport:1.2, limit:6700, lag:0.10, flowK:1.00},   // ECU remap
+      {id:"stage2",maxTq:280, boost:1.3, boostSport:1.4, limit:7000, lag:0.12, flowK:1.12},   // + intake, intercooler, exhaust
+      {id:"stage3",maxTq:340, boost:1.6, boostSport:1.7, limit:7400, lag:0.24, flowK:1.25}    // + big turbo: more power, more lag
+    ];
+    function setTune(i){ const T=TUNES[i]; for(const k of ["maxTq","boost","boostSport","limit","lag","flowK"]) P[k]=T[k]; P.limitResume=P.limit-170; return T; }
+    // peak power: a quick virtual dyno pull of this same engine (N, full throttle, flywheel PS)
+    function peakPS(){
+      const d=createSim({event:()=>{}}); Object.assign(d.P,{maxTq:P.maxTq,boost:P.boost,boostSport:P.boostSport,limit:P.limit,limitResume:P.limitResume,lag:P.lag,flowK:P.flowK});
+      d.S.coolant=d.S.oilTemp=85; d.ignitionPress(); for(let i=0;i<1700;i++) d.step(1/240);
+      d.selectGear("S"); let best=0;
+      for(let i=0;i<4800;i++){ d.S.pedal=1; d.step(1/240); if(d.S.rpm>2000){ const kw=(d.S.comb-(8+d.S.rpm*0.0026))*d.S.rpm*Math.PI/30/1000; if(kw>best) best=kw; } }
+      return Math.round(best*1000/735.5);
+    }
+    return { S, P, step, selectGear, manualShift, ignitionPress, TUNES, setTune, peakPS };
   }
   /*SIM-END*/
 
@@ -1820,7 +1850,8 @@ registerProcessor('engine-synth', EngineProc);`;
       noon:["เที่ยงแล้ว หิวข้าว!","แดดแรงจัง~"],
       chat:["อยากกินชาไข่มุกจัง","เปิดเพลงหน่อยสิ~","โมจิชอบเที่ยวกับเธอที่สุด!","ร้องเพลงกันเถอะ ลัลล้า~","รู้มั้ย เทอร์โบหมุนเป็นแสนรอบเลยน้า","ขับดีจัง เก่งๆ","งุงิ~ ปุ๊ๆ","แวะปั๊มซื้อขนมได้มั้ย","ง่วงต้องพักน้า","เสียงท่อนี่แหละความสุข","วิวสวยมากเลยอ่ะ","ไปไหนต่อดีน้า~","โมจินั่งตรงนี้ดูทางให้น้า"],
       hum:["♪ ลัลลา~","♫ ตู้ดู้ดู~","♪ ฮึมๆ~"],
-      settle:["จอดสนิท~","หยุดนุ่มมาก!"], love:["รักเธอน้า~","กอดหน่อย~","♥"]
+      settle:["จอดสนิท~","หยุดนุ่มมาก!"], love:["รักเธอน้า~","กอดหน่อย~","♥"],
+      tuneUp:["แรงขึ้นแล้ว!","จูนแล้ว ม้าเพิ่มเพียบ!","บูสต์มากขึ้น ตื่นเต้นจัง~","ระวังหลังติดเบาะน้า!"], tuneStock:["กลับเป็นเดิมแล้ว~","ขับชิลๆ แบบเดิมก็ดีน้า"]
     },
     en:{
       wake:["I'm up! road trip!","seatbelt on?","Mochi ready!","hear the fuel pump?"],
@@ -1866,7 +1897,8 @@ registerProcessor('engine-synth', EngineProc);`;
       night:["night time~","so many stars"], noon:["noon! lunch?","so sunny~"],
       chat:["I want bubble tea","music please~","I love road trips with you!","you drive so well","snack stop?","that exhaust note…","nice view!"],
       hum:["♪ la la~","♫ doo doo~","♪ hmm hmm~"],
-      settle:["nice stop~"], love:["love ya~","hug?","♥"]
+      settle:["nice stop~"], love:["love ya~","hug?","♥"],
+      tuneUp:["more power!","tuned! so many horses!","more boost~"], tuneStock:["back to stock~","comfy stock"]
     }
   };
   const lastLine={};
@@ -1915,6 +1947,7 @@ registerProcessor('engine-synth', EngineProc);`;
       case "crash": react("panic",3,"crash",3); break;
       case "settle": if(Math.random()<0.2) react("content",1,"settle",0); break;
       case "msg": react("curious",1.4,null,1); break;
+      case "tune": react(ev.stage?"excited":"content",1.6,ev.stage?"tuneUp":"tuneStock",2); break;
     }
   };
   function baseMood(){
@@ -2217,11 +2250,11 @@ registerProcessor('engine-synth', EngineProc);`;
   // UI language for everything outside the cluster (the cluster itself stays English like a real car)
   const UI_TXT={
     en:{ settings:"SETTINGS", sound:"SOUND", vol:"VOL", refuel:"REFUEL", oil:"OIL", trip:"TRIP RESET", pause:"PAUSE", keys:"KEYS",
-         pad:"PAD", traffic:"TRAFFIC", help:"HELP", full:"FULL", hbrake:"HAND<br>BRAKE", ppause:"PAUSE", pstart:"START",
+         pad:"PAD", traffic:"TRAFFIC", tune:"TUNE", vmax:"180 LIMIT", stages:["STOCK","STAGE 1","STAGE 2","STAGE 3"], help:"HELP", full:"FULL", hbrake:"HAND<br>BRAKE", ppause:"PAUSE", pstart:"START",
          pbrake:"BRAKE", pgas:"GAS", fuelFull:"FUEL FULL", oilFull:"OIL FULL", trip0:"TRIP 0.0", noAudio:"NO AUDIO", km:"km",
          hint:"<b>I</b> START/STOP &nbsp; <b>↑</b> THROTTLE (+SHIFT = PART) &nbsp; <b>↓</b> BRAKE &nbsp; <b>SPACE</b> HANDBRAKE<br><b>P R N D S L</b> GEAR &nbsp; <b>+ / −</b> MANUAL STEP &nbsp; <b>← →</b> SIGNAL / LANE &nbsp; <b>T</b> TRIP INFO &nbsp; <b>ESC</b> PAUSE" },
     th:{ settings:"ตั้งค่า", sound:"เสียง", vol:"ระดับเสียง", refuel:"เติมน้ำมัน", oil:"เติมน้ำมันเครื่อง", trip:"รีเซ็ตทริป", pause:"หยุดชั่วคราว", keys:"ปุ่มลัด",
-         pad:"จอยสัมผัส", traffic:"รถบนถนน", help:"วิธีเล่น", full:"เต็มจอ", hbrake:"เบรกมือ", ppause:"พัก", pstart:"สตาร์ท",
+         pad:"จอยสัมผัส", traffic:"รถบนถนน", tune:"จูน", vmax:"ลิมิต 180", stages:["เดิม","สเตจ 1","สเตจ 2","สเตจ 3"], help:"วิธีเล่น", full:"เต็มจอ", hbrake:"เบรกมือ", ppause:"พัก", pstart:"สตาร์ท",
          pbrake:"เบรก", pgas:"คันเร่ง", fuelFull:"น้ำมันเต็มถัง", oilFull:"น้ำมันเครื่องเต็ม", trip0:"ทริป 0.0", noAudio:"ไม่มีเสียง", km:"กม.",
          hint:"<b>I</b> สตาร์ท/ดับเครื่อง &nbsp; <b>↑</b> คันเร่ง (+SHIFT = เบาๆ) &nbsp; <b>↓</b> เบรก &nbsp; <b>SPACE</b> เบรกมือ<br><b>P R N D S L</b> เกียร์ &nbsp; <b>+ / −</b> เปลี่ยนสเต็ปเอง &nbsp; <b>← →</b> ไฟเลี้ยว/เปลี่ยนเลน &nbsp; <b>T</b> ข้อมูลทริป &nbsp; <b>ESC</b> หยุดชั่วคราว" }
   };
@@ -2232,6 +2265,7 @@ registerProcessor('engine-synth', EngineProc);`;
       if(el.dataset.t==="hbrake") el.innerHTML=v; else if(!el.dataset.busy) el.textContent=v;
     });
     hintEl.innerHTML=tr("hint");
+    showTune();
     setCluster(ui.cluster,false);
     if(ui.failed) failEl.textContent=ui.runKm.toFixed(1)+" "+tr("km");
     if(soundButton.classList.contains("on")===false && !window.AudioContext && !window.webkitAudioContext) setSoundUI(false,tr("noAudio"));
@@ -2245,6 +2279,19 @@ registerProcessor('engine-synth', EngineProc);`;
   fuelBtn.addEventListener("click",()=>{ S.fuel=100; pulse(fuelBtn,"fuelFull"); onSimEvent({type:"refuel"}); });
   oilBtn.addEventListener("click",()=>{ S.oilLevel=100; pulse(oilBtn,"oilFull"); onSimEvent({type:"refuel"}); });
   $("btnTrip").addEventListener("click",()=>{ S.trip=0; S.tripFuel=0; pulse($("btnTrip"),"trip0"); });
+  // TUNE: realistic upgrade stages (saved); shows the resulting peak power
+  ui.tune=(()=>{ try{ const v=+localStorage.getItem("mdc-tune"); return v>=0&&v<4?v:0; }catch(e){ return 0; } })();
+  sim.setTune(ui.tune);
+  function showTune(){ $("tuneName").textContent=tr("stages")[ui.tune]+" "+sim.peakPS()+"PS"; }
+  $("btnTune").addEventListener("click",()=>{
+    ui.tune=(ui.tune+1)%sim.TUNES.length; sim.setTune(ui.tune);
+    try{ localStorage.setItem("mdc-tune",ui.tune); }catch(e){}
+    showTune(); onSimEvent({type:"tune",stage:ui.tune});
+  });
+  const vmaxBtn=$("btnVmax");
+  S.P.vmax=(()=>{ try{ return localStorage.getItem("mdc-vmax")==="1"?180:0; }catch(e){ return 0; } })();
+  vmaxBtn.classList.toggle("on",!!S.P.vmax);
+  vmaxBtn.addEventListener("click",()=>{ S.P.vmax=S.P.vmax?0:180; vmaxBtn.classList.toggle("on",!!S.P.vmax); try{ localStorage.setItem("mdc-vmax",S.P.vmax?"1":"0"); }catch(e){} });
   function toggle(id,fn){ const b=$(id); b.addEventListener("click",()=>{ const on=!b.classList.contains("on"); b.classList.toggle("on",on); fn(on); }); return b; }
   const pauseBtn=toggle("btnPause",on=>{ ui.paused=on; });
   const trafficBtn=$("btnTraffic"); trafficBtn.classList.toggle("on",ui.traffic);
@@ -2331,7 +2378,8 @@ registerProcessor('engine-synth', EngineProc);`;
     for(let i=0;i<14;i++){
       const h=Math.round(3+i*0.45);
       const lit=rpm>i*500+250;
-      let col=i>=13?C.red:i>=12?C.amber:"#e6ebf2";
+      const red=Math.min(13,Math.floor(S.P.limit/500));
+      let col=i>=red?C.red:i>=red-1?C.amber:"#e6ebf2";
       if(S.limiter && i>=12 && !blinkOn) col=C.off;
       if(lit) glow(col===C.off?"transparent":col,4,()=>rect(x0+i*5,base-h,4,h,col));
       else rect(x0+i*5,base-h,4,h,"#151c26");
@@ -2501,7 +2549,7 @@ registerProcessor('engine-synth', EngineProc);`;
     // ---- tachometer (0-8 x1000, red zone from 6.5)
     const tx=52, ty=110, tr=42;
     face(tx,ty,tr);
-    ctx.save(); ctx.beginPath(); ctx.arc(tx,ty,tr-1,-angAt(6.5/8),-angAt(1),false); ctx.arc(tx,ty,tr-12,-angAt(1),-angAt(6.5/8),true); ctx.closePath(); ctx.clip();
+    ctx.save(); ctx.beginPath(); ctx.arc(tx,ty,tr-1,-angAt(S.P.limit/8000),-angAt(1),false); ctx.arc(tx,ty,tr-12,-angAt(1),-angAt(S.P.limit/8000),true); ctx.closePath(); ctx.clip();
     ctx.strokeStyle="#e1222c"; ctx.lineWidth=1.3; for(let i=-60;i<60;i+=3){ ctx.beginPath(); ctx.moveTo(tx+i,ty-40); ctx.lineTo(tx+i+40,ty+40); ctx.stroke(); }
     ctx.restore();
     ticks(tx,ty,tr,8,0.25,0.5,1,v=>v,tr-14,9);
@@ -2918,7 +2966,7 @@ registerProcessor('engine-synth', EngineProc);`;
       // overrun crackle from the sport exhaust
       if(S.engine==="running" && S.rpm>2200 && S.pedal<0.05 && (S.decelCut||S.limiter)){
         const sport=S.gear==="S"||S.manual;
-        const rate=S.limiter?5:S.popWin*(sport?10:4)+(S.rpm>3500?(sport?0.7:0.25):0);
+        const rate=S.limiter?2.5:S.popWin*(sport?4:1.6)+(S.rpm>3800&&sport?0.35:0);
         if(Math.random()<rate*dt){ audio.event({type:"pop",amt:Math.random()}); onSimEvent({type:"pop"}); }
       }
       const kmhNow=Math.abs(S.v*3.6);

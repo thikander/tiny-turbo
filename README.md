@@ -49,6 +49,19 @@ To drive off: press `I`, wait for idle, hold `↓` and press `D`, then hold `↑
 - Light comes from the sky, your headlights, street lamps and tunnel lamps. Cars, buildings and tunnels are drawn as 3D boxes.
 - Speed blur: above about 50 km/h the edges of the view smear toward the vanishing point, with streaks and a slight vignette that grow with speed.
 
+## Tuning
+
+**TUNE** in settings steps through realistic upgrade stages for the 1.3 turbo. The button shows the peak power from a quick dyno pull of the simulated engine. The choice is remembered.
+
+| Stage | What it is | Peak | 0–100 km/h | Top speed |
+| --- | --- | --- | --- | --- |
+| Stock | factory | 106 PS | 10.0 s | 193 km/h |
+| Stage 1 | ECU remap: more boost, 6,700 rpm limit | 118 PS | 9.2 s | 201 km/h |
+| Stage 2 | + intake, intercooler, exhaust: more boost and top-end breathing, 7,000 rpm | 140 PS | 7.8 s | 218 km/h |
+| Stage 3 | + big turbo: much more boost and power, but more turbo lag, 7,400 rpm | 163 PS | 6.8 s | 237 km/h |
+
+**180 LIMIT** switches on a Japanese-market style speed limiter that cuts fuel at 180 km/h.
+
 ## What is simulated
 
 - **Engine:** 1.3 L turbo four-cylinder with a torque curve, friction and pumping losses, idle control with cold fast idle, a rev limiter at 6,500 rpm, and fuel cut on overrun.
@@ -68,7 +81,7 @@ There are no audio samples; everything is generated in an AudioWorklet:
 
 - **Engine:** a sporty turbo four with a straight-through sport exhaust. Firing pulses come through unequal header runners, then header, mid-pipe and tail-pipe resonances, a bright muffler and a cabin drone. Pulse turbulence adds the rasp, the intake hardens past about 5,200 rpm, and idle has a slight lope that is rougher when cold.
 - **Start sequence:** key-on relay click and fuel pump prime, the starter solenoid, ring-gear whine loaded by each compression stroke, coughs as it catches, the starter pinion spinning out, then the flare.
-- **Turbo:** whistle, compressor whoosh, wastegate chatter at full boost, and a blow-off valve with a short flutter. Lifting off from high rpm gives overrun crackle with a flame from the exhaust (more in S and manual).
+- **Turbo:** whistle, compressor whoosh, wastegate chatter at full boost, and a blow-off valve with a short flutter. Lifting off hard from high rpm gives short bursts of overrun crackle (more in S and manual).
 - **Car:** brake pad hiss and an occasional squeal at low speed, a body settle when you stop, the handbrake ratchet, gear lever detents through the gate, the turn-signal relay tick and tock, a reverse buzzer, CVT whine, and tyre, wind and road-joint thumps.
 - **World:** rain on the roof, thunder, echo in tunnels and a short cabin reverb.
 
