@@ -85,6 +85,13 @@
   .hint b { color:#6b7484; font-weight:normal; }
 
   /* ---------- help dialog ---------- */
+  #fail {
+    position:absolute; inset:0; z-index:8; display:none; place-items:center;
+    background:#03060b; color:#f2f3f5; border:1px solid #7d8796; cursor:pointer;
+    font:bold clamp(34px, 10vw, 60px) Consolas, "Courier New", monospace; letter-spacing:.04em;
+    user-select:none; -webkit-user-select:none;
+  }
+  #fail.show { display:grid; }
   #dialog {
     position:absolute; left:6%; right:6%; bottom:4%; z-index:5; display:none;
     padding:12px 14px 14px; background:#05080d; color:#f2f3f5;
@@ -196,6 +203,7 @@
   <canvas id="cluster" width="320" height="198" aria-label="Simulated automotive instrument cluster"></canvas>
   <canvas id="mochi" width="48" height="44" aria-label="Mochi mascot"></canvas>
   <div id="bubble"></div>
+  <div id="fail" role="status" aria-live="assertive"></div>
   <div id="dialog" role="dialog" aria-live="polite"><div id="dlgTitle"></div><div id="dlgText"></div><div id="dlgMore"></div></div>
 </div>
 <div class="hint" id="hint"><b>I</b> START/STOP &nbsp; <b>↑</b> THROTTLE (+SHIFT = PART) &nbsp; <b>↓</b> BRAKE &nbsp; <b>SPACE</b> HANDBRAKE<br><b>P R N D S L</b> GEAR &nbsp; <b>+ / −</b> MANUAL STEP &nbsp; <b>← →</b> SIGNAL / LANE CHANGE &nbsp; <b>ESC</b> PAUSE</div>
@@ -784,11 +792,11 @@ registerProcessor('engine-synth', EngineProc);`;
     road.heading+=road.k*v*dt;
     // lane change with the signal (left-hand traffic: home lane is the left one)
     let want=-1;
-    if(kmh>25){
+    if(kmh>8){
       want=ui.right&&road.lane===0?1:ui.left&&road.lane===1?0:-1;
-      if(want>=0){ road.laneT+=dt; if(road.laneT>1.2){ road.lane=want; road.laneT=0; road.changing=true; } } else road.laneT=0;
+      if(want>=0){ road.laneT+=dt; if(road.laneT>0.08){ road.lane=want; road.laneT=0; road.changing=true; } } else road.laneT=0;
     }
-    const tx=road.lane?1.8:-1.8, rate=dt*1.1*clamp(kmh/40,0,1);
+    const tx=road.lane?1.8:-1.8, rate=dt*clamp(1.5+Math.abs(kmh)/22,0,6.5)*clamp(Math.abs(kmh)/12,0,1);
     road.camX+=clamp(tx-road.camX,-rate,rate);
     if(road.changing && Math.abs(tx-road.camX)<0.05){
       road.changing=false;                       // lane change done: self-cancel the indicator
@@ -796,6 +804,7 @@ registerProcessor('engine-synth', EngineProc);`;
     }
     if(Math.abs(kmh)>10 && Math.random()<dt*Math.abs(kmh)/180){ road.bump=1; road.bumpKick=true; }
     road.bump*=Math.exp(-dt*16);
+    updateTraffic(dt);
   }
 
   function drawRoad(now){
@@ -848,11 +857,13 @@ registerProcessor('engine-synth', EngineProc);`;
       if(n%5===0) objs.push({z,x:-6.3,t:"lamp"});
       if(n%23===7) objs.push({z,x:5.8,t:"sign"});
     }
+    for(const c of road.cars){ const z=c.pos-road.pos; if(z>1&&z<240) objs.push({z,x:c.x,t:"car",c}); }
     objs.sort((a,b)=>b.z-a.z);
     for(const o of objs){
       const sx=f/o.z, gy=hz+CAM_H*sx, x=160+kf*o.z+(o.x-camX)*sx;
       if(x<-60||x>RW+60) continue;
       const l=lightAt(o.z), fg=fogAt(o.z);
+      if(o.t==="car"){ drawCar(o.c,sx,gy,x,l,fg); continue; }
       if(o.t==="post"){
         const w=Math.max(1,0.12*sx), h=Math.max(2,1.0*sx);
         rc.fillStyle=col([210,210,205],l,fg); rc.fillRect(x-w/2,gy-h,w,h);
@@ -886,6 +897,117 @@ registerProcessor('engine-synth', EngineProc);`;
     rc.strokeStyle="#7d8796"; rc.lineWidth=1; rc.strokeRect(1.5,1.5,RW-3,RH-1);
     rc.strokeStyle="#202936"; rc.strokeRect(4.5,4.5,RW-9,RH-7);
     if(ui.paused){ rc.fillStyle="rgba(0,0,0,.45)"; rc.fillRect(0,0,RW,RH); }
+  }
+
+  /* ============================== TRAFFIC GAME ==============================
+     Cars ahead in both lanes, drawn as dark silhouettes with tail lights you
+     can spot from far away. Change lane with ← → to get past. Hit one and the
+     run ends on a clean screen showing only the distance driven.
+     ===================================================================== */
+  road.cars=[]; road.spawnT=1.5; ui.runKm=0; ui.failed=false; ui.failT=0;
+  const CAR_TYPES=["sedan","sedan","hatch","hatch","suv","suv","van"];
+  // tail-light layouts in metres for a 1.8 m wide car: [x, y-from-light-line, w, h]
+  const LIGHTS=[
+    [[-0.86,0,0.3,0.13],[0.56,0,0.3,0.13]],                                            // twin blocks
+    [[-0.86,0.02,1.72,0.06],[-0.86,-0.02,0.24,0.14],[0.62,-0.02,0.24,0.14]],          // full-width bar
+    [[-0.88,-0.08,0.07,0.3],[-0.88,-0.08,0.3,0.07],[0.81,-0.08,0.07,0.3],[0.58,-0.08,0.3,0.07]], // L shapes
+    [[-0.86,0.02,0.09,0.09],[-0.73,0.02,0.09,0.09],[-0.6,0.02,0.09,0.09],[0.51,0.02,0.09,0.09],[0.64,0.02,0.09,0.09],[0.77,0.02,0.09,0.09]], // triple dots
+    [[-0.88,-0.42,0.08,0.58],[0.8,-0.42,0.08,0.58]],                                   // tall pillar strips
+    [[-0.86,0,0.14,0.14],[-0.67,0,0.14,0.14],[0.53,0,0.14,0.14],[0.72,0,0.14,0.14]]   // round quads
+  ];
+  const BODY={ // [width, wheel h, body h, cabin h, cabin width ratio, light line from body top]
+    sedan:[1.8,0.28,0.62,0.5,0.76,0.14], hatch:[1.75,0.28,0.66,0.58,0.84,0.12],
+    suv:[1.9,0.34,0.8,0.62,0.88,0.16], van:[2.0,0.32,1.95,0,1,1.45]
+  };
+  function spawnCar(){
+    const lane=Math.random()<0.6?0:1, pos=road.pos+200+Math.random()*70;
+    for(const c of road.cars){
+      const gap=Math.abs(c.pos-pos);
+      if(c.lane===lane&&gap<28) return;
+      if(c.lane!==lane&&gap<18) return;      // always leave a way through
+    }
+    const cruise=(lane===0?44+Math.random()*30:68+Math.random()*30)/3.6;
+    const type=CAR_TYPES[(Math.random()*CAR_TYPES.length)|0];
+    road.cars.push({ pos, lane, x:lane?1.8:-1.8, v:cruise, cruise, type,
+      style:type==="van"?0:(Math.random()*LIGHTS.length)|0, brakeT:0, braking:false });
+  }
+  function updateTraffic(dt){
+    if(ui.failed) return;
+    if(S.ignition) ui.runKm+=Math.abs(S.v)*dt/1000;
+    const cars=road.cars;
+    for(const c of cars){
+      let target=c.cruise;
+      c.brakeT-=dt; if(c.brakeT>0) target=c.cruise*0.55;
+      else if(Math.random()<dt*0.035) c.brakeT=0.8+Math.random()*1.6;
+      let lead=null;
+      for(const o of cars) if(o!==c&&o.lane===c.lane&&o.pos>c.pos&&(!lead||o.pos<lead.pos)) lead=o;
+      if(lead&&lead.pos-c.pos<35) target=Math.min(target,lead.v*(lead.pos-c.pos<16?0.8:1));
+      c.braking=target<c.v-0.4;
+      c.v+=clamp(target-c.v,-7*dt,2.2*dt);
+      c.pos+=c.v*dt;
+    }
+    road.cars=cars.filter(c=>c.pos-road.pos<360&&c.pos-road.pos>-40);
+    const kmh=S.v*3.6, want=Math.min(8,2+Math.floor(ui.runKm*1.6));
+    road.spawnT-=dt;
+    if(kmh>15&&road.cars.length<want&&road.spawnT<=0){ spawnCar(); road.spawnT=0.7+Math.random()*1.6; }
+    // collision: our front bumper is ~2.2 m ahead of the camera
+    for(const c of road.cars){
+      const dz=c.pos-road.pos;
+      if(dz<2.3&&dz>-1.2&&Math.abs(c.x-road.camX)<1.7&&S.v>c.v-0.5&&S.v>1){ crash(); break; }
+    }
+  }
+  const failEl=$("fail");
+  function crash(){
+    ui.failed=true; ui.failT=0;
+    failEl.textContent=ui.runKm.toFixed(1)+" km";
+    failEl.classList.add("show");
+    audio.event({type:"thump",amt:2.2});
+    if(navigator.vibrate&&(!navigator.userActivation||navigator.userActivation.hasBeenActive)) navigator.vibrate([60,40,120]);
+  }
+  function restartRun(){
+    ui.failed=false; failEl.classList.remove("show");
+    road.cars=[]; road.spawnT=1.5; ui.runKm=0;
+    S.v=0; S.lock=false; S.pedal=0; S.brake=0;
+    if(S.engine==="running"){ S.w=S.P.idle*Math.PI/30; S.rpm=S.P.idle; }
+    road.camX=road.lane?1.8:-1.8; road.changing=false;
+    keys.clear();
+  }
+  failEl.addEventListener("pointerdown",e=>{ e.preventDefault(); if(ui.failT>0.8) restartRun(); });
+  window.addEventListener("keydown",e=>{
+    if(!ui.failed) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if(!e.repeat&&ui.failT>0.8) restartRun();
+  },{capture:true});
+  window.addEventListener("keyup",e=>{ if(ui.failed){ e.stopImmediatePropagation(); } },{capture:true});
+
+  function drawCar(c,sx,gy,x,l,fg){
+    const B=BODY[c.type], k=B[0]/1.8, R=(a,b,w,h)=>rc.fillRect(Math.round(a),Math.round(b),Math.max(1,Math.round(w)),Math.max(1,Math.round(h)));
+    const hw=B[0]/2*sx, wheelTop=gy-B[1]*sx, bodyTop=wheelTop-B[2]*sx;
+    const lit=Math.min(1,l*0.6);
+    // ground shadow + wheels
+    rc.fillStyle="rgba(0,0,0,"+(0.45*(1-fg)).toFixed(2)+")"; R(x-hw*1.08,gy-0.1*sx,hw*2.16,0.16*sx);
+    rc.fillStyle=col([6,6,8],1,fg*0.8);
+    R(x-hw+0.05*sx,wheelTop,0.34*sx,B[1]*sx); R(x+hw-0.39*sx,wheelTop,0.34*sx,B[1]*sx);
+    // body + cabin silhouette, faint rim from our headlights
+    rc.fillStyle=col([30,32,40],0.4+lit,fg*0.85); R(x-hw,bodyTop,hw*2,B[2]*sx);
+    if(B[3]>0){
+      const ch=B[3]*sx, cw=hw*B[4];
+      for(let i=0;i<ch;i++){ const w=cw*(0.8+0.2*(i/ch)); R(x-w,bodyTop-ch+i,w*2,1); }
+      rc.fillStyle=col([44,52,70],0.4+lit,fg*0.85);
+      const wh=ch*0.62; for(let i=0;i<wh;i++){ const w=cw*(0.7+0.2*(i/wh)); R(x-w,bodyTop-ch+ch*0.2+i,w*2,1); }
+    }
+    if(sx>6){ rc.fillStyle=col([200,200,190],0.25+lit*0.5,fg); R(x-0.22*sx,wheelTop-0.2*sx,0.44*sx,0.12*sx); } // plate
+    // tail lights (barely fogged so they read from far away)
+    const ly=bodyTop+B[5]*sx, on=c.braking, lf=fg*0.3;
+    const glowPad=Math.max(1,0.12*sx);
+    for(const L of LIGHTS[c.style]){
+      const lx=x+L[0]*k*sx, lyy=ly+L[1]*sx, lw=L[2]*k*sx, lh=L[3]*sx;
+      rc.fillStyle="rgba(255,40,30,"+((on?0.38:0.18)*(1-lf)).toFixed(2)+")";
+      R(lx-glowPad,lyy-glowPad,lw+glowPad*2,lh+glowPad*2);
+    }
+    rc.fillStyle=col(on?[255,92,74]:[205,24,24],1,lf);
+    for(const L of LIGHTS[c.style]) R(x+L[0]*k*sx,ly+L[1]*sx,L[2]*k*sx,L[3]*sx);
+    if(on&&B[3]>0){ rc.fillStyle=col([255,92,74],1,lf); R(x-0.25*sx,bodyTop-B[3]*sx-0.02*sx,0.5*sx,0.05*sx); } // third brake light
   }
 
   /* ============================== MOCHI ==============================
@@ -1314,14 +1436,16 @@ registerProcessor('engine-synth', EngineProc);`;
         ["Press ",K("I")," to start the engine, then wait for the idle to settle."],
         ["To leave Park, hold ",K("↓")," brake, then tap ",K("D"),". Like a real car, it won't shift without the brake."],
         ["Hold ",K("↑")," to drive. ",K("Shift"),"+",K("↑")," gives gentle throttle."],
-        [K("←"),K("→")," signal and change lane. ",K("S")," sport mode, ",K("+"),K("−")," manual steps."]
+        [K("←"),K("→")," signal and change lane. ",K("S")," sport mode, ",K("+"),K("−")," manual steps."],
+        ["Cars ahead show only their tail lights. Dodge them with ",K("←"),K("→"),". Hit one and the run ends."]
       ],
       touch:[
         ["Welcome! The car starts in ",K("P")," (Park) with the engine off."],
         ["Tap ",K("START")," to start the engine, then wait for the idle to settle."],
         ["To leave Park, hold ",K("B")," brake, then tap ",K("D"),". Like a real car, it won't shift without the brake."],
         ["Hold ",K("A")," to drive. Let go to coast, hold ",K("B")," to stop."],
-        [K("◀"),K("▶")," signal and change lane. ",K("▲"),K("▼")," manual steps in D or S."]
+        [K("◀"),K("▶")," signal and change lane. ",K("▲"),K("▼")," manual steps in D or S."],
+        ["Cars ahead show only their tail lights. Dodge them with ",K("◀"),K("▶"),". Hit one and the run ends."]
       ]
     },
     th:{
@@ -1330,14 +1454,16 @@ registerProcessor('engine-synth', EngineProc);`;
         ["กด ",K("I")," เพื่อสตาร์ทเครื่อง แล้วรอให้รอบเดินเบานิ่งก่อน"],
         ["จะออกจากเกียร์ P ต้องกด ",K("↓")," เบรกค้างไว้ แล้วกด ",K("D")," เหมือนรถจริง ไม่เหยียบเบรกจะเข้าเกียร์ไม่ได้"],
         ["กด ",K("↑")," ค้างไว้เพื่อเร่ง หรือ ",K("Shift"),"+",K("↑")," เพื่อเร่งเบาๆ"],
-        [K("←"),K("→")," ไฟเลี้ยวและเปลี่ยนเลน ",K("S")," โหมดสปอร์ต ",K("+"),K("−")," เปลี่ยนสเต็ปเอง"]
+        [K("←"),K("→")," ไฟเลี้ยวและเปลี่ยนเลน ",K("S")," โหมดสปอร์ต ",K("+"),K("−")," เปลี่ยนสเต็ปเอง"],
+        ["รถคันหน้าจะเห็นแค่ไฟท้าย หลบด้วย ",K("←"),K("→")," ถ้าชนเมื่อไหร่ รอบนั้นจบทันที"]
       ],
       touch:[
         ["ยินดีต้อนรับ! ตอนนี้รถจอดอยู่เกียร์ ",K("P")," และเครื่องยังดับอยู่"],
         ["แตะ ",K("START")," เพื่อสตาร์ทเครื่อง แล้วรอให้รอบเดินเบานิ่งก่อน"],
         ["จะออกจากเกียร์ P ต้องกด ",K("B")," เบรกค้างไว้ แล้วแตะ ",K("D")," เหมือนรถจริง ไม่เหยียบเบรกจะเข้าเกียร์ไม่ได้"],
         ["กด ",K("A")," ค้างไว้เพื่อเร่ง ปล่อยให้รถไหลไปเอง กด ",K("B")," ค้างไว้เพื่อหยุด"],
-        [K("◀"),K("▶")," ไฟเลี้ยวและเปลี่ยนเลน ",K("▲"),K("▼")," เปลี่ยนสเต็ปเองในเกียร์ D หรือ S"]
+        [K("◀"),K("▶")," ไฟเลี้ยวและเปลี่ยนเลน ",K("▲"),K("▼")," เปลี่ยนสเต็ปเองในเกียร์ D หรือ S"],
+        ["รถคันหน้าจะเห็นแค่ไฟท้าย หลบด้วย ",K("◀"),K("▶")," ถ้าชนเมื่อไหร่ รอบนั้นจบทันที"]
       ]
     }
   };
@@ -1488,7 +1614,8 @@ registerProcessor('engine-synth', EngineProc);`;
   /* ============================== LOOP ============================== */
   function frame(now){
     const dt=Math.min((now-ui.last)/1000,0.05); ui.last=now;
-    if(!ui.paused){
+    if(ui.failed) ui.failT+=dt;
+    if(!ui.paused && !ui.failed){
       const target=keys.has("arrowup")&&S.ignition?(keys.has("shift")?0.45:1):0;
       S.pedal=target>S.pedal?Math.min(target,S.pedal+dt*2.4):Math.max(target,S.pedal-dt*4.5);
       S.brake=keys.has("arrowdown")?Math.min(1,S.brake+dt*2.5):Math.max(0,S.brake-dt*4);
@@ -1512,7 +1639,7 @@ registerProcessor('engine-synth', EngineProc);`;
         rpm:S.rpm, load:clamp(S.comb/S.P.maxTq+(S.blipT>0?0.45:0),0,1.2), thr:S.thr,
         turbo:S.turbo, boost:Math.max(0,S.map-1), starter:S.engine==="cranking"?1:0,
         speed:Math.abs(S.v*3.6), cut:S.cut?1:0, running:run?1:0,
-        pop:(S.gear==="S"||S.manual)?S.popWin:0, vol:ui.paused?0:ui.volume
+        pop:(S.gear==="S"||S.manual)?S.popWin:0, vol:(ui.paused||(ui.failed&&ui.failT>0.7))?0:ui.volume
       });
     }
     draw(now);
