@@ -19,7 +19,7 @@ A low-res digital instrument cluster for a small turbo car with a CVT, running i
 | `←` / `→` | Turn signal. Above 25 km/h it also changes lane |
 | `Esc` | Pause |
 
-On phones and tablets a handheld-style touch pad appears instead (toggle it with **PAD** in the settings (gear button, top right)):
+On phones and tablets a handheld-style touch pad appears instead (toggle it with **PAD** in settings):
 
 | Button | Action |
 | --- | --- |
@@ -31,7 +31,7 @@ On phones and tablets a handheld-style touch pad appears instead (toggle it with
 | `HAND BRAKE` | Toggle handbrake |
 | `PAUSE` | Pause |
 
-A short how-to dialog shows on the first visit; **HELP** in the settings (gear button, top right) brings it back. The dialog and mochi speak Thai by default; **TH/EN** in the settings (gear button, top right) switches language and the choice is remembered.
+Everything else lives behind the gear button in the top-right corner. A short how-to dialog shows on the first visit; **HELP** brings it back. The dialog and mochi speak Thai by default; **TH/EN** switches language and the choice is remembered.
 
 Sound starts on the first key press or click. Use headphones or decent speakers; most of the engine note is low frequency.
 
