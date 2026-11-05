@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, minimum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>Mini Digital Cluster</title>
+<title>Tiny Turbo</title>
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
@@ -32,12 +32,29 @@
   .mb.vol { cursor:default; }
   .mb.vol input { width:72px; height:12px; margin:0; accent-color:#168fe0; cursor:pointer; }
   .mb b { color:#00f13c; font-weight:bold; }
-  .sep { width:1px; height:18px; background:#1d2532; margin:0 3px; }
+  .sep { display:none; }
+  .gearbtn {
+    position:fixed; top:10px; right:10px; z-index:21; width:36px; height:36px; display:grid; place-items:center;
+    background:#0a0e15; border:1px solid #232b37; color:#7f8998; cursor:pointer; padding:0;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .gearbtn:hover, .gearbtn.on { color:#f2f3f5; border-color:#5d6879; }
+  .gearbtn.on svg { transform:rotate(45deg); }
+  .gearbtn svg { transition:transform .2s steps(2); }
+  .menu {
+    position:fixed !important; top:52px; right:10px; z-index:20; width:252px; max-width:calc(100vw - 20px);
+    display:none !important; justify-content:flex-start !important;
+  }
+  .menu.open { display:flex !important; }
+  .menu .mb { flex:1 1 calc(50% - 4px); height:30px !important; font-size:10px !important; padding:0 10px !important; }
+  .menu .mb.vol { flex-basis:100%; }
+  .menu .mb.vol input { flex:1; width:auto !important; }
+  .mtitle { flex-basis:100%; padding:4px 6px 2px; font:bold 9px Consolas, monospace; letter-spacing:.16em; color:#4c5564; }
   .stage {
-    position:relative; width:min(560px, 94vw, calc((100vh - 120px) * 0.947));
+    position:relative; width:min(560px, 94vw, calc((100vh - 70px) * 0.947));
     filter: drop-shadow(0 0 2px rgba(140,160,190,.12));
   }
-  .stage.noroad { width:min(560px, 94vw, calc((100vh - 120px) * 1.616)); }
+  .stage.noroad { width:min(560px, 94vw, calc((100vh - 70px) * 1.616)); }
   .stage.noroad #road { display:none; }
   .stage canvas { display:block; width:100%; height:auto; image-rendering:pixelated; image-rendering:crisp-edges; }
   #mochi {
@@ -133,8 +150,8 @@
   .down i { box-shadow:0 2px 0 #5e1233; }
 
   body.has-pad { padding-bottom:calc(228px + env(safe-area-inset-bottom)); }
-  body.has-pad .stage { width:min(560px, 94vw, calc((100dvh - 360px) * 0.947)); }
-  body.has-pad .stage.noroad { width:min(560px, 94vw, calc((100dvh - 360px) * 1.616)); }
+  body.has-pad .stage { width:min(560px, 94vw, calc((100dvh - 300px) * 0.947)); }
+  body.has-pad .stage.noroad { width:min(560px, 94vw, calc((100dvh - 300px) * 1.616)); }
   @media (orientation:landscape) and (max-height:540px) {
     body.has-pad { padding:6px 200px; }
     body.has-pad { gap:6px; justify-content:flex-start; }
@@ -142,20 +159,22 @@
     body.has-pad .mb { height:20px; padding:0 6px; font-size:9px; gap:4px; }
     body.has-pad .mb.vol input { width:48px; }
     body.has-pad .sep { display:none; }
-    body.has-pad .stage { width:min(560px, calc(100vw - 410px), calc((100dvh - 84px) * 0.947)); }
-    body.has-pad .stage.noroad { width:min(560px, calc(100vw - 410px), calc((100dvh - 84px) * 1.616)); }
+    body.has-pad .stage { width:min(560px, calc(100vw - 410px), calc((100dvh - 24px) * 0.947)); }
+    body.has-pad .stage.noroad { width:min(560px, calc(100vw - 410px), calc((100dvh - 24px) * 1.616)); }
     .pad { inset:0; padding:0; background:none; box-shadow:none; border-radius:0; pointer-events:none; color:#8b929d; }
     .pad .prow { display:contents; }
     .gears { position:fixed; left:14px; top:14px; width:176px; flex-wrap:wrap; justify-content:flex-start; pointer-events:auto; }
     .g.hb { margin-left:0; }
     .dpad { position:fixed; left:30px; bottom:22px; pointer-events:auto; }
-    .mid { position:fixed; right:34px; top:30px; transform:none; pointer-events:auto; }
+    .mid { position:fixed; right:34px; top:64px; transform:none; pointer-events:auto; }
     .ab { position:fixed; right:22px; bottom:26px; pointer-events:auto; }
   }
 </style>
 </head>
 <body>
-<nav class="menu" id="menu" aria-label="Cluster menu">
+<button id="btnSettings" class="gearbtn" type="button" aria-label="Settings" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" shape-rendering="crispEdges" fill="currentColor"><path d="M7 0h2v2h2v1h1v-1h2v2h-1v1h1v2h2v2h-2v2h-1v1h1v2h-2v-1h-1v1h-2v2h-2v-2h-2v-1h-1v1h-2v-2h1v-1h-1v-2h-2v-2h2v-2h1v-1h-1v-2h2v1h1v-1h2zM6 5v1h-1v4h1v1h4v-1h1v-4h-1v-1z"/></svg></button>
+<nav class="menu" id="menu" aria-label="Settings">
+  <div class="mtitle">SETTINGS</div>
   <button id="btnSound" class="mb" type="button"><i class="led"></i>SOUND</button>
   <label class="mb vol">VOL <input id="vol" type="range" min="0" max="100" value="80" aria-label="Volume"></label>
   <span class="sep"></span>
@@ -1084,6 +1103,11 @@ registerProcessor('engine-synth', EngineProc);`;
   ui.volume=0.8; ui.road=true; ui.mochi=true;
   const hintEl=$("hint");
   $("menu").addEventListener("mousedown",e=>{ if(e.target.closest("button")) e.preventDefault(); });
+  const menuEl=$("menu"), gearBtn=$("btnSettings");
+  function setMenu(open){ menuEl.classList.toggle("open",open); gearBtn.classList.toggle("on",open); gearBtn.setAttribute("aria-expanded",open); }
+  gearBtn.addEventListener("mousedown",e=>e.preventDefault());
+  gearBtn.addEventListener("click",()=>setMenu(!menuEl.classList.contains("open")));
+  document.addEventListener("pointerdown",e=>{ if(menuEl.classList.contains("open") && !menuEl.contains(e.target) && !gearBtn.contains(e.target)) setMenu(false); });
   const volIn=$("vol");
   volIn.addEventListener("input",()=>{ ui.volume=volIn.value/100; });
   volIn.addEventListener("change",()=>volIn.blur());
