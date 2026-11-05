@@ -2,7 +2,7 @@
 
 **Play:** https://thikander.github.io/tiny-turbo/
 
-A low-res digital instrument cluster for a small turbo car with a CVT, running in one HTML file. The car is simulated, the engine sound is synthesized live in the browser, and there is a road view and a small mochi that reacts to how you drive.
+A low-res instrument cluster for a small turbo car with a CVT, running in one HTML file. It comes in two looks: a 90s-style analog cluster (red brushed plate, white dials, red needles, drum odometer) and the original digital one; switch with **ANALOG/DIGI** in settings. The car is simulated, the engine sound is synthesized live in the browser, and there is a road view and a small mochi that reacts to how you drive.
 
 ![Cluster and road view](screenshot.png)
 

@@ -195,6 +195,7 @@
   <button id="btnKeys" class="mb on" type="button"><i class="led"></i>KEYS</button>
   <button id="btnPad" class="mb" type="button"><i class="led"></i>PAD</button>
   <button id="btnTraffic" class="mb" type="button"><i class="led"></i>TRAFFIC</button>
+  <button id="btnCluster" class="mb" type="button" aria-label="Cluster style"><b>ANALOG</b>/DIGI</button>
   <button id="btnHelp" class="mb" type="button">HELP</button>
   <button id="btnLang" class="mb" type="button" aria-label="Language"><b>TH</b>/EN</button>
   <button id="btnFull" class="mb" type="button">FULL</button>
@@ -1273,6 +1274,13 @@ registerProcessor('engine-synth', EngineProc);`;
     road.spawnT=3;
   });
   toggle("btnKeys",on=>hintEl.classList.toggle("hidden",!on));
+  const clusterBtn=$("btnCluster");
+  function setCluster(c){
+    ui.cluster=c; try{ localStorage.setItem("mdc-cluster",c); }catch(e){}
+    clusterBtn.innerHTML=c==="analog"?"<b>ANALOG</b>/DIGI":"ANALOG/<b>DIGI</b>";
+  }
+  clusterBtn.addEventListener("click",()=>setCluster(ui.cluster==="analog"?"digital":"analog"));
+  setCluster((()=>{ try{ return localStorage.getItem("mdc-cluster")==="digital"?"digital":"analog"; }catch(e){ return "analog"; } })());
   const fullBtn=$("btnFull");
   fullBtn.addEventListener("click",()=>{ if(document.fullscreenElement) document.exitFullscreen(); else if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen(); });
   document.addEventListener("fullscreenchange",()=>fullBtn.classList.toggle("on",!!document.fullscreenElement));
@@ -1351,7 +1359,177 @@ registerProcessor('engine-synth', EngineProc);`;
     if(on) rect(x+1,y+1,27,9,color+"33");
     text(label,x+15,y+6,7,on?color:"#2c333e","center","bold");
   }
+  /* ============================== ANALOG CLUSTER ==============================
+     90s sport-style cluster: red brushed-metal plate, white dials, red needles,
+     drum odometer, fuel/temp twin dial, warning lamps in the plate slots.
+     ===================================================================== */
+  if(!ui.cluster) ui.cluster="analog";
+  const AN_START=215*Math.PI/180, AN_SWEEP=250*Math.PI/180;
+  const DIAL_FONT='Arial, Helvetica, sans-serif';
+  let plateTex=null;
+  function makePlate(){
+    const c=document.createElement("canvas"); c.width=320; c.height=198;
+    const g=c.getContext("2d");
+    g.fillStyle="#c3152c"; g.fillRect(0,0,320,198);
+    let seed=7; const rnd=()=>{ seed=(seed*16807)%2147483647; return seed/2147483647; };
+    for(let y=0;y<198;y++){ let x=0; while(x<320){ const len=3+rnd()*36, a=rnd()*0.11;
+      g.fillStyle=rnd()<0.5?"rgba(255,255,255,"+a.toFixed(3)+")":"rgba(0,0,0,"+a.toFixed(3)+")"; g.fillRect(x|0,y,Math.ceil(len),1); x+=len; } }
+    const gr=g.createLinearGradient(0,0,0,198);
+    gr.addColorStop(0,"rgba(0,0,0,.35)"); gr.addColorStop(0.3,"rgba(255,255,255,.06)"); gr.addColorStop(1,"rgba(0,0,0,.22)");
+    g.fillStyle=gr; g.fillRect(0,0,320,198);
+    return c;
+  }
+  function rrPath(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+  function atext(str,x,y,size,color,align="center",weight="bold",italic=""){
+    ctx.font=italic+" "+weight+" "+size+"px "+DIAL_FONT; ctx.fillStyle=color; ctx.textAlign=align; ctx.textBaseline="middle"; ctx.fillText(String(str),x,y);
+  }
+  const angAt=f=>AN_START-clamp(f,0,1)*AN_SWEEP;
+  function face(cx,cy,r){
+    ctx.beginPath(); ctx.arc(cx,cy,r+2,0,Math.PI*2); ctx.fillStyle="#141416"; ctx.fill();
+    const g=ctx.createRadialGradient(cx-r*0.2,cy-r*0.25,r*0.1,cx,cy,r);
+    g.addColorStop(0,"#fbfbfc"); g.addColorStop(0.75,"#eceef1"); g.addColorStop(1,"#cfd3d8");
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fillStyle=g; ctx.fill();
+  }
+  function ticks(cx,cy,r,max,step,midEvery,majEvery,fmt,labelR,labelSize){
+    for(let v=0;v<=max+1e-6;v+=step){
+      const a=angAt(v/max), maj=Math.abs(v/majEvery-Math.round(v/majEvery))<1e-6, mid=Math.abs(v/midEvery-Math.round(v/midEvery))<1e-6;
+      const len=maj?7:mid?4.5:2.5;
+      line(cx+Math.cos(a)*(r-len),cy-Math.sin(a)*(r-len),cx+Math.cos(a)*(r-1),cy-Math.sin(a)*(r-1),"#141416",maj?1.6:mid?1.1:0.8);
+      if(maj) atext(fmt(v),cx+Math.cos(a)*labelR,cy-Math.sin(a)*labelR,labelSize,"#141416");
+    }
+  }
+  function needle(cx,cy,a,len,tail=6){
+    const x2=cx+Math.cos(a)*len, y2=cy-Math.sin(a)*len, x0=cx-Math.cos(a)*tail, y0=cy+Math.sin(a)*tail;
+    line(x0+0.6,y0+0.8,x2+0.6,y2+0.8,"rgba(0,0,0,.25)",2.2);
+    line(x0,y0,x2,y2,"#e1222c",2.2);
+    line(x0,y0,x2,y2,"#ff6a6a",0.6);
+  }
+  function hub(cx,cy,r){
+    ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fillStyle="#18181b"; ctx.fill();
+    ctx.beginPath(); ctx.arc(cx-1,cy-1,r*0.45,0,Math.PI*2); ctx.fillStyle="#3a3a40"; ctx.fill();
+  }
+  function drum(x,y,str,lastWhite){
+    for(let i=0;i<str.length;i++){
+      const white=lastWhite&&i===str.length-1;
+      rect(x+i*6,y,6,9,white?"#f1f1ee":"#101012");
+      rect(x+i*6,y,1,9,"#2b2b30");
+      ctx.font="bold 7px Consolas, monospace"; ctx.fillStyle=white?"#101012":"#f1f1ee"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText(str[i],x+i*6+3.5,y+5);
+    }
+    ctx.strokeStyle="#5a5a60"; ctx.lineWidth=1; ctx.strokeRect(x-0.5,y-0.5,str.length*6+1,10);
+  }
+  function lcd(x,y,w,h,str,color="#ff8a4a"){
+    rrPath(x,y,w,h,3); ctx.fillStyle="#0c0d0f"; ctx.fill(); ctx.strokeStyle="#4a1018"; ctx.lineWidth=1; ctx.stroke();
+    ctx.font="bold 7px Consolas, monospace"; ctx.fillStyle=color; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(str,x+w/2,y+h/2+0.5);
+  }
+  function slot(x,y,label,on,color){
+    rrPath(x,y,18,9,3.5); ctx.fillStyle=on?color:"#2a0b10"; ctx.fill();
+    ctx.strokeStyle="rgba(0,0,0,.55)"; ctx.lineWidth=1; ctx.stroke();
+    if(on){ ctx.save(); ctx.globalAlpha=0.35; rrPath(x-1,y-1,20,11,4); ctx.fillStyle=color; ctx.fill(); ctx.restore(); }
+    ctx.font="bold 6px Consolas, monospace"; ctx.fillStyle=on?"#160606":"#4a1a20"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillText(label,x+9,y+5);
+  }
+  function drawAnalog(now){
+    if(!plateTex) plateTex=makePlate();
+    // bezel + hood
+    ctx.fillStyle="#08090b"; ctx.fillRect(0,0,320,198);
+    ctx.save(); rrPath(4,14,312,180,44); ctx.clip(); ctx.drawImage(plateTex,0,0);
+    const hood=ctx.createLinearGradient(0,14,0,48); hood.addColorStop(0,"rgba(0,0,0,.55)"); hood.addColorStop(1,"rgba(0,0,0,0)");
+    ctx.fillStyle=hood; ctx.fillRect(0,14,320,34); ctx.restore();
+    rrPath(4.5,14.5,311,179,44); ctx.strokeStyle="#2a0a0f"; ctx.lineWidth=1.5; ctx.stroke();
+
+    let sweep=null;
+    if(S.sweepT<1.5){ const t=S.sweepT, e=u=>1-Math.pow(1-clamp(u,0,1),3); sweep=t<0.6?e(t/0.6):t<0.8?1:1-e((t-0.8)/0.7); }
+    const blinkOn=(now%320)<160, ign=S.ignition, run=S.engine==="running";
+
+    // ---- tachometer (0-8 x1000, red zone from 6.5)
+    const tx=52, ty=110, tr=42;
+    face(tx,ty,tr);
+    ctx.save(); ctx.beginPath(); ctx.arc(tx,ty,tr-1,-angAt(6.5/8),-angAt(1),false); ctx.arc(tx,ty,tr-12,-angAt(1),-angAt(6.5/8),true); ctx.closePath(); ctx.clip();
+    ctx.strokeStyle="#e1222c"; ctx.lineWidth=1.3; for(let i=-60;i<60;i+=3){ ctx.beginPath(); ctx.moveTo(tx+i,ty-40); ctx.lineTo(tx+i+40,ty+40); ctx.stroke(); }
+    ctx.restore();
+    ticks(tx,ty,tr,8,0.25,0.5,1,v=>v,tr-14,9);
+    atext("x1000r/min",tx,ty-15,5.5,"#141416");
+    const rpmF=sweep!=null?sweep:clamp(ui.dispRpm/8000,0,1);
+    lcd(tx-14,ty+14,28,10,(S.map>=1?"+":"")+(sweep!=null?"0.00":(S.map-1).toFixed(2)),S.map>1.02?"#ffb72b":"#ff8a4a");
+    needle(tx,ty,angAt(rpmF),tr-5);
+    hub(tx,ty,5);
+
+    // ---- speedometer (0-240 km/h) with drum odometer + trip
+    const sx=160, sy=100, sr=66;
+    face(sx,sy,sr);
+    ticks(sx,sy,sr,240,5,10,20,v=>v,sr-15,8);
+    atext("km/h",sx,sy-36,7,"#141416");
+    drum(sx-18,sy-26,String(Math.floor(S.odometer)%1000000).padStart(6,"0"),false);
+    const trip=(Math.floor(S.trip*10)%10000).toString().padStart(4,"0");
+    drum(sx-12,sy+14,trip,true);
+    atext("TINY TURBO",sx,sy+38,6.5,"#141416","center","bold","italic");
+    const spF=sweep!=null?sweep:clamp(ui.dispSpeed/240,0,1);
+    needle(sx,sy,angAt(spF),sr-6,8);
+    hub(sx,sy,7);
+
+    // ---- fuel + temperature twin dial
+    const fx=268, fy=110, fr=42;
+    face(fx,fy,fr);
+    const fpX=fx-17, tpX=fx+17;
+    const arcTicks=(px,a0,a1,n,red)=>{ for(let i=0;i<=n;i++){ const a=(a0+(a1-a0)*i/n)*Math.PI/180, big=i===0||i===n||i===n/2;
+      line(px+Math.cos(a)*(big?17:19),fy-Math.sin(a)*(big?17:19),px+Math.cos(a)*23,fy-Math.sin(a)*23,red&&i===red?"#e1222c":"#141416",big?1.5:1); } };
+    arcTicks(fpX,-50,50,8,0);
+    arcTicks(tpX,230,130,8,8);
+    atext("F",fpX+Math.cos(50*Math.PI/180)*29,fy-Math.sin(50*Math.PI/180)*29,8,"#141416");
+    atext("E",fpX+Math.cos(-50*Math.PI/180)*29,fy-Math.sin(-50*Math.PI/180)*29,8,"#141416");
+    atext("H",tpX+Math.cos(130*Math.PI/180)*29,fy-Math.sin(130*Math.PI/180)*29,8,"#141416");
+    atext("C",tpX+Math.cos(230*Math.PI/180)*29,fy-Math.sin(230*Math.PI/180)*29,8,"#141416");
+    atext("⛽",fpX+12,fy+1,7,S.fuel<15&&ign?"#e1222c":"#141416");
+    atext("♨",tpX-12,fy+1,7,S.coolant>108&&ign?"#e1222c":"#141416");
+    const fuelF=sweep!=null?sweep:S.fuel/100, tempF=sweep!=null?sweep:clamp((S.coolant-40)/90,0,1);
+    needle(fpX,fy,(-50+100*fuelF)*Math.PI/180,21,4); hub(fpX,fy,4);
+    needle(tpX,fy,(230-100*tempF)*Math.PI/180,21,4); hub(tpX,fy,4);
+
+    // ---- warning lamps in the plate slots
+    const sig=v=>v&&ui.blink;
+    slot(22,24,"◀",ign&&sig(ui.left),"#2bff6a");
+    slot(44,24,"CHK",ign&&!run,"#ffb72b");
+    slot(66,24,"OIL",ign&&S.oilPressure<0.3,"#ff3b3b");
+    slot(33,38,"BAT",ign&&S.voltage<13,"#ff3b3b");
+    slot(55,38,"BRK",ign&&(S.handbrake||(S.gear==="P"&&!run)),"#ff3b3b");
+    slot(236,24,"TRB",ign&&run&&S.map>1.02,"#4fb3ff");
+    slot(258,24,"REV",ign&&S.limiter&&blinkOn,"#ff3b3b");
+    slot(280,24,"▶",ign&&sig(ui.right),"#2bff6a");
+    slot(247,38,"ECO",ign&&run&&S.pedal<0.35&&S.pedal>0.02&&S.lock,"#2bff6a");
+    slot(269,38,"FUEL",ign&&S.fuel<15,"#ffb72b");
+    slot(104,166,"TC",ign&&run&&S.lock,"#2bff6a");
+    slot(198,166,"STEP",ign&&run&&(S.dstep||S.manual||S.gear==="S"),"#ffb72b");
+
+    // ---- gear strip under the speedo
+    const gears=["P","R","N","D","S","L"], gx=160-gears.length*9/2+4.5;
+    gears.forEach((g,i)=>{
+      const on=ign&&S.gear===g, x=gx+i*9;
+      if(on){ rrPath(x-4,174,8,10,2); ctx.fillStyle="#f6f2ea"; ctx.fill(); }
+      atext(g,x,179.5,8,on?"#141416":"#5a1820");
+    });
+    if(ign&&(S.manual||S.gear==="S"||S.dstep)) atext((S.manual?"M":"")+(S.vgear+1),gx+gears.length*9+3,179.5,7,"#f6f2ea");
+
+    // ---- small LCDs: clock + oil pressure
+    const d=new Date();
+    lcd(20,166,44,12,String(d.getHours()).padStart(2,"0")+(blinkOn?":":" ")+String(d.getMinutes()).padStart(2,"0"),"#ff8a4a");
+    lcd(256,166,44,12,"OIL "+S.oilPressure.toFixed(1),S.oilPressure<0.3&&ign?"#ff3b3b":"#ff8a4a");
+
+    // lens glare
+    ctx.save(); rrPath(4,14,312,180,44); ctx.clip();
+    const gl=ctx.createLinearGradient(0,14,0,90); gl.addColorStop(0,"rgba(255,255,255,.07)"); gl.addColorStop(1,"rgba(255,255,255,0)");
+    ctx.fillStyle=gl; ctx.beginPath(); ctx.moveTo(4,14); ctx.lineTo(316,14); ctx.lineTo(316,40); ctx.quadraticCurveTo(160,70,4,40); ctx.fill(); ctx.restore();
+
+    if(!S.ignition){
+      rect(0,0,320,198,"rgba(0,0,0,.62)");
+      text("IGNITION OFF",160,96,14,C.white,"center","bold");
+      text("PRESS I TO START",160,112,7,"#c9cdd3","center");
+    }
+    if(ui.paused) text("PAUSED",160,8,8,C.amber,"center","bold");
+  }
+
   function draw(now){
+    if(ui.cluster==="analog"){ drawAnalog(now); return; }
     ctx.fillStyle=C.bg; ctx.fillRect(0,0,320,198);
     ctx.strokeStyle="#7d8796"; ctx.lineWidth=1; ctx.strokeRect(1.5,1.5,317,195);
     ctx.strokeStyle="#202936"; ctx.strokeRect(4.5,4.5,311,189);
