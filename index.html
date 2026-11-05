@@ -31,6 +31,7 @@
   .mb.ok { color:#00f13c; border-color:#1f6b35; }
   .mb.vol { cursor:default; }
   .mb.vol input { width:72px; height:12px; margin:0; accent-color:#168fe0; cursor:pointer; }
+  .mb b { color:#00f13c; font-weight:bold; }
   .sep { width:1px; height:18px; background:#1d2532; margin:0 3px; }
   .stage {
     position:relative; width:min(560px, 94vw, calc((100vh - 120px) * 0.947));
@@ -48,7 +49,7 @@
   #bubble {
     position:absolute; z-index:3; transform:translate(-50%,-100%); pointer-events:none;
     padding:3px 6px; background:#fff3f6; color:#2b1b25; border:2px solid #4a2f3d;
-    font:bold 10px/1.1 Consolas, monospace; letter-spacing:.04em; white-space:nowrap;
+    font:bold 10px/1.25 Consolas, "Leelawadee UI", Tahoma, "Noto Sans Thai", monospace; letter-spacing:.04em; white-space:nowrap;
     opacity:0; transition:opacity .15s;
   }
   #bubble.show { opacity:1; }
@@ -69,7 +70,7 @@
     position:absolute; left:6%; right:6%; bottom:4%; z-index:5; display:none;
     padding:12px 14px 14px; background:#05080d; color:#f2f3f5;
     border:3px solid #f2f3f5; box-shadow:0 0 0 3px #000, 6px 6px 0 3px rgba(0,0,0,.55);
-    font:bold 13px/1.55 Consolas, "Courier New", monospace; letter-spacing:.02em; cursor:pointer;
+    font:bold 13px/1.6 Consolas, "Leelawadee UI", Tahoma, "Noto Sans Thai", "Courier New", monospace; letter-spacing:.02em; cursor:pointer;
     user-select:none; -webkit-user-select:none;
   }
   #dialog.show { display:block; }
@@ -168,6 +169,7 @@
   <button id="btnKeys" class="mb on" type="button"><i class="led"></i>KEYS</button>
   <button id="btnPad" class="mb" type="button"><i class="led"></i>PAD</button>
   <button id="btnHelp" class="mb" type="button">HELP</button>
+  <button id="btnLang" class="mb" type="button" aria-label="Language"><b>TH</b>/EN</button>
   <button id="btnFull" class="mb" type="button">FULL</button>
 </nav>
 <div class="stage" id="stage">
@@ -859,28 +861,30 @@ registerProcessor('engine-synth', EngineProc);`;
   const mimg=mctx.createImageData(MW,MH), MD=mimg.data;
   const mask=new Uint8Array(MW*MH), mdx=new Float32Array(MW*MH), mdy=new Float32Array(MW*MH);
   const pick=a=>a[(Math.random()*a.length)|0];
+  ui.lang=(()=>{ try{ return localStorage.getItem("mdc-lang")||"th"; }catch(e){ return "th"; } })();
+  const sayList=d=>ui.lang==="th"&&d.th?d.th:d.say;
   const MOODS={
-    sleep:  {eyes:["sleep"],mouth:["flat","small"],say:["zzz…","*snore*","5 more min…"],fx:"zzz"},
-    crank:  {eyes:["wide"],mouth:["o"],say:["!?","here we go!","wake up!"],fx:"shake"},
-    off:    {eyes:["dot"],mouth:["cat"],say:["press I~","ready?","hello!"]},
-    held:   {eyes:["><","happy"],mouth:["o"],say:["wee~","put me down!","hehe"],fx:"blush"},
-    poke:   {eyes:["happy"],mouth:["D"],say:["hi!","boop!","hehe~","that tickles!"],fx:"blush"},
-    yum:    {eyes:["happy"],mouth:["D","cat"],say:["yum!","all full~","thank you!"],fx:"sparkle blush"},
-    bov:    {eyes:["wide","><"],mouth:["o"],say:["PSSHH!","pshhh~","stu-tu-tu!"],fx:"puff"},
-    shift:  {eyes:["wink"],mouth:["cat","smile"],say:["shift!","step~","click!"]},
-    clunk:  {eyes:["happy"],mouth:["small"],say:["clunk!","in gear~","ready!"]},
-    limiter:{eyes:["dizzy","x"],mouth:["wavy"],say:["BRAP BRAP!","limiter!!","too much!"],fx:"shake sweat"},
-    turbo:  {eyes:["star"],mouth:["D"],say:["TURBO!","boost~!","spooool!","wheee!"],fx:"sparkle blush"},
-    fast:   {eyes:["wide","><"],mouth:["wavy","o"],say:["too fast!","hold me!","w-woah","speed!!"],fx:"sweat"},
-    brake:  {eyes:["><"],mouth:["o"],say:["eek!","whoa!","gently!"]},
-    hungry: {eyes:["sad"],mouth:["wavy"],say:["hungry…","fuel pls","running low"],fx:"sweat"},
-    reverse:{eyes:["dot"],mouth:["small"],say:["beep beep","backing up~","careful!"]},
-    vroom:  {eyes:["happy"],mouth:["D"],say:["VROOM!","yeah~!","go go go!"],fx:"blush"},
-    accel:  {eyes:["happy","dot"],mouth:["cat","smile"],say:["let's go!","♪","wee~"]},
-    cruise: {eyes:["dot","happy"],mouth:["smile","cat"],say:["♪","nice road~","la la la","cruisin'","so smooth"]},
-    cold:   {eyes:["dot"],mouth:["wavy"],say:["brr…","cold engine","warming up"],fx:"shiver"},
-    park:   {eyes:["dot","happy"],mouth:["cat"],say:["parked~","rest time","…"]},
-    idle:   {eyes:["dot","sleepy"],mouth:["cat","flat"],say:["waiting~","hmm?","green yet?","…"]}
+    sleep:  {eyes:["sleep"],mouth:["flat","small"],say:["zzz…","*snore*","5 more min…"],fx:"zzz",th:["ครอก… ฟี้…","ขอนอนอีกห้านาทีน้า","งืมๆ… zzz"]},
+    crank:  {eyes:["wide"],mouth:["o"],say:["!?","here we go!","wake up!"],fx:"shake",th:["ตื่นแล้วๆ!","ไปกันเลย!","!? สตาร์ทแล้ว"]},
+    off:    {eyes:["dot"],mouth:["cat"],say:["press I~","ready?","hello!"],th:["สตาร์ทรถสิ~","พร้อมยังน้า?","หวัดดีจ้า!"]},
+    held:   {eyes:["><","happy"],mouth:["o"],say:["wee~","put me down!","hehe"],fx:"blush",th:["ว้ายยย~","ปล่อยเค้าลงน้า!","อุ้มเค้าทำไมอ่ะ"]},
+    poke:   {eyes:["happy"],mouth:["D"],say:["hi!","boop!","hehe~","that tickles!"],fx:"blush",th:["จิ้มเค้าทำไม!","บู๊บ!","คิกๆ จั๊กจี้~","หวัดดีจ้า!"]},
+    yum:    {eyes:["happy"],mouth:["D","cat"],say:["yum!","all full~","thank you!"],fx:"sparkle blush",th:["อร่อยจัง!","อิ่มแล้ว~","ขอบคุณน้า!"]},
+    bov:    {eyes:["wide","><"],mouth:["o"],say:["PSSHH!","pshhh~","stu-tu-tu!"],fx:"puff",th:["ฟื้ดดด!","พรืดดด~","ปุ๊ดๆๆ!"]},
+    shift:  {eyes:["wink"],mouth:["cat","smile"],say:["shift!","step~","click!"],th:["เปลี่ยนเกียร์!","ขยับสเต็ป~","คลิก!"]},
+    clunk:  {eyes:["happy"],mouth:["small"],say:["clunk!","in gear~","ready!"],th:["ตึก!","เข้าเกียร์แล้ว~","พร้อมแล้ว!"]},
+    limiter:{eyes:["dizzy","x"],mouth:["wavy"],say:["BRAP BRAP!","limiter!!","too much!"],fx:"shake sweat",th:["แบร่บๆ!","ตัดรอบแล้ว!!","เยอะไปแล้วน้า!"]},
+    turbo:  {eyes:["star"],mouth:["D"],say:["TURBO!","boost~!","spooool!","wheee!"],fx:"sparkle blush",th:["เทอร์โบมา!","บูสต์~!","ฟิ้ววว!","ว้าวว!"]},
+    fast:   {eyes:["wide","><"],mouth:["wavy","o"],say:["too fast!","hold me!","w-woah","speed!!"],fx:"sweat",th:["เร็วไปแล้ว!","จับเค้าไว้ด้วย!","ว-ว้าย","ซิ่งงง!!"]},
+    brake:  {eyes:["><"],mouth:["o"],say:["eek!","whoa!","gently!"],th:["อุ๊ย!","เบรกแรงไปอ่ะ!","ค่อยๆ น้า!"]},
+    hungry: {eyes:["sad"],mouth:["wavy"],say:["hungry…","fuel pls","running low"],fx:"sweat",th:["หิวน้ำมันแล้ว…","เติมน้ำมันหน่อยน้า","ใกล้หมดแล้วอ่ะ"]},
+    reverse:{eyes:["dot"],mouth:["small"],say:["beep beep","backing up~","careful!"],th:["ปี๊บ ปี๊บ","ถอยหลังน้า~","ระวังด้วยน้า!"]},
+    vroom:  {eyes:["happy"],mouth:["D"],say:["VROOM!","yeah~!","go go go!"],fx:"blush",th:["บรื้นนน!","เย้~!","ไปเลยๆ!"]},
+    accel:  {eyes:["happy","dot"],mouth:["cat","smile"],say:["let's go!","♪","wee~"],th:["ไปกันเถอะ!","♪","วี้~"]},
+    cruise: {eyes:["dot","happy"],mouth:["smile","cat"],say:["♪","nice road~","la la la","cruisin'","so smooth"],th:["♪","ถนนสวยจัง~","ลัลล้า~","ขับชิลๆ","นุ่มมากเลย"]},
+    cold:   {eyes:["dot"],mouth:["wavy"],say:["brr…","cold engine","warming up"],fx:"shiver",th:["หนาวจัง…","เครื่องยังเย็นอยู่","อุ่นเครื่องแป๊บน้า"]},
+    park:   {eyes:["dot","happy"],mouth:["cat"],say:["parked~","rest time","…"],th:["จอดแล้ว~","พักก่อนน้า","…"]},
+    idle:   {eyes:["dot","sleepy"],mouth:["cat","flat"],say:["waiting~","hmm?","green yet?","…"],th:["รออยู่น้า~","หืม?","ไฟเขียวยังอ่ะ?","…"]}
   };
   const SPECIAL=new Set(["crank","held","poke","yum","bov","shift","clunk","limiter","turbo","fast","brake","hungry"]);
   const mo={ x:0.83, y:0.03, t:0, mood:"", eyes:"dot", mouth:"cat", fx:"", blink:0, blinkT:2, lx:0, ly:0, lookT:2,
@@ -922,14 +926,14 @@ registerProcessor('engine-synth', EngineProc);`;
     if(m!==mo.mood){
       mo.mood=m; const d=MOODS[m];
       mo.eyes=pick(d.eyes); mo.mouth=pick(d.mouth); mo.fx=d.fx||"";
-      if(SPECIAL.has(m)||mo.sayCool<=0) say(pick(d.say));
+      if(SPECIAL.has(m)||mo.sayCool<=0) say(pick(sayList(d)));
       mo.chatT=7+Math.random()*8;
     }
     mo.chatT-=dt;
     if(mo.chatT<=0){
       const d=MOODS[mo.mood]; mo.chatT=7+Math.random()*9;
       mo.eyes=pick(d.eyes); mo.mouth=pick(d.mouth);
-      if(Math.random()<0.65) say(pick(d.say));
+      if(Math.random()<0.65) say(pick(sayList(d)));
     }
     if(mo.bubbleT>0){ mo.bubbleT-=dt; if(mo.bubbleT<=0) bubble.classList.remove("show"); }
     mo.blinkT-=dt; if(mo.blinkT<=0){ mo.blink=0.13; mo.blinkT=1.6+Math.random()*3.6; } mo.blink-=dt;
@@ -1262,26 +1266,52 @@ registerProcessor('engine-synth', EngineProc);`;
   const dlg=$("dialog"), dlgText=$("dlgText"), dlgTitle=$("dlgTitle"), dlgMore=$("dlgMore");
   const K=k=>({k});
   const PAGES={
-    pc:[
-      ["Welcome! The car starts in ",K("P")," (Park) with the engine off."],
-      ["Press ",K("I")," to start the engine, then wait for the idle to settle."],
-      ["To leave Park, hold ",K("↓")," brake, then tap ",K("D"),". Like a real car, it won't shift without the brake."],
-      ["Hold ",K("↑")," to drive. ",K("Shift"),"+",K("↑")," gives gentle throttle."],
-      [K("←"),K("→")," signal and change lane. ",K("S")," sport mode, ",K("+"),K("−")," manual steps."]
-    ],
-    touch:[
-      ["Welcome! The car starts in ",K("P")," (Park) with the engine off."],
-      ["Tap ",K("START")," to start the engine, then wait for the idle to settle."],
-      ["To leave Park, hold ",K("B")," brake, then tap ",K("D"),". Like a real car, it won't shift without the brake."],
-      ["Hold ",K("A")," to drive. Let go to coast, hold ",K("B")," to stop."],
-      [K("◀"),K("▶")," signal and change lane. ",K("▲"),K("▼")," manual steps in D or S."]
-    ]
+    en:{
+      pc:[
+        ["Welcome! The car starts in ",K("P")," (Park) with the engine off."],
+        ["Press ",K("I")," to start the engine, then wait for the idle to settle."],
+        ["To leave Park, hold ",K("↓")," brake, then tap ",K("D"),". Like a real car, it won't shift without the brake."],
+        ["Hold ",K("↑")," to drive. ",K("Shift"),"+",K("↑")," gives gentle throttle."],
+        [K("←"),K("→")," signal and change lane. ",K("S")," sport mode, ",K("+"),K("−")," manual steps."]
+      ],
+      touch:[
+        ["Welcome! The car starts in ",K("P")," (Park) with the engine off."],
+        ["Tap ",K("START")," to start the engine, then wait for the idle to settle."],
+        ["To leave Park, hold ",K("B")," brake, then tap ",K("D"),". Like a real car, it won't shift without the brake."],
+        ["Hold ",K("A")," to drive. Let go to coast, hold ",K("B")," to stop."],
+        [K("◀"),K("▶")," signal and change lane. ",K("▲"),K("▼")," manual steps in D or S."]
+      ]
+    },
+    th:{
+      pc:[
+        ["ยินดีต้อนรับ! ตอนนี้รถจอดอยู่เกียร์ ",K("P")," และเครื่องยังดับอยู่"],
+        ["กด ",K("I")," เพื่อสตาร์ทเครื่อง แล้วรอให้รอบเดินเบานิ่งก่อน"],
+        ["จะออกจากเกียร์ P ต้องกด ",K("↓")," เบรกค้างไว้ แล้วกด ",K("D")," เหมือนรถจริง ไม่เหยียบเบรกจะเข้าเกียร์ไม่ได้"],
+        ["กด ",K("↑")," ค้างไว้เพื่อเร่ง หรือ ",K("Shift"),"+",K("↑")," เพื่อเร่งเบาๆ"],
+        [K("←"),K("→")," ไฟเลี้ยวและเปลี่ยนเลน ",K("S")," โหมดสปอร์ต ",K("+"),K("−")," เปลี่ยนสเต็ปเอง"]
+      ],
+      touch:[
+        ["ยินดีต้อนรับ! ตอนนี้รถจอดอยู่เกียร์ ",K("P")," และเครื่องยังดับอยู่"],
+        ["แตะ ",K("START")," เพื่อสตาร์ทเครื่อง แล้วรอให้รอบเดินเบานิ่งก่อน"],
+        ["จะออกจากเกียร์ P ต้องกด ",K("B")," เบรกค้างไว้ แล้วแตะ ",K("D")," เหมือนรถจริง ไม่เหยียบเบรกจะเข้าเกียร์ไม่ได้"],
+        ["กด ",K("A")," ค้างไว้เพื่อเร่ง ปล่อยให้รถไหลไปเอง กด ",K("B")," ค้างไว้เพื่อหยุด"],
+        [K("◀"),K("▶")," ไฟเลี้ยวและเปลี่ยนเลน ",K("▲"),K("▼")," เปลี่ยนสเต็ปเองในเกียร์ D หรือ S"]
+      ]
+    }
   };
   const TIPS={
-    "PRESS BRAKE":{pc:["Hold ",K("↓")," brake first, then tap the gear key."],touch:["Hold ",K("B")," brake first, then tap the gear."]},
-    "SHIFT TO P/N":{pc:["The engine only starts in ",K("P")," or ",K("N"),"."],touch:["The engine only starts in ",K("P")," or ",K("N"),"."]},
-    "SHIFT INHIBIT":{pc:["Slow down first. P and R only work below 6 km/h."],touch:["Slow down first. P and R only work below 6 km/h."]}
+    en:{
+      "PRESS BRAKE":{pc:["Hold ",K("↓")," brake first, then tap the gear key."],touch:["Hold ",K("B")," brake first, then tap the gear."]},
+      "SHIFT TO P/N":{pc:["The engine only starts in ",K("P")," or ",K("N"),"."],touch:["The engine only starts in ",K("P")," or ",K("N"),"."]},
+      "SHIFT INHIBIT":{pc:["Slow down first. P and R only work below 6 km/h."],touch:["Slow down first. P and R only work below 6 km/h."]}
+    },
+    th:{
+      "PRESS BRAKE":{pc:["กด ",K("↓")," เบรกค้างไว้ก่อน แล้วค่อยกดปุ่มเกียร์"],touch:["กด ",K("B")," เบรกค้างไว้ก่อน แล้วค่อยแตะเกียร์"]},
+      "SHIFT TO P/N":{pc:["สตาร์ทเครื่องได้เฉพาะเกียร์ ",K("P")," หรือ ",K("N")],touch:["สตาร์ทเครื่องได้เฉพาะเกียร์ ",K("P")," หรือ ",K("N")]},
+      "SHIFT INHIBIT":{pc:["ชะลอก่อนน้า เกียร์ P กับ R เข้าได้ตอนต่ำกว่า 6 km/h"],touch:["ชะลอก่อนน้า เกียร์ P กับ R เข้าได้ตอนต่ำกว่า 6 km/h"]}
+    }
   };
+  const TITLES={ en:{help:"HOW TO DRIVE",tip:"TIP"}, th:{help:"วิธีขับ",tip:"เคล็ดลับ"} };
   const dl={ open:false, modal:false, pages:[], page:0, shown:0, len:0, closeT:0, title:"" };
   const esc=s=>s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
   const tokLen=p=>p.reduce((n,t)=>n+(typeof t==="string"?t.length:1),0);
@@ -1312,7 +1342,7 @@ registerProcessor('engine-synth', EngineProc);`;
     closeDialog();
   }
   const mode=()=>ui.pad?"touch":"pc";
-  function showHelp(){ openDialog(PAGES[mode()],{title:"HOW TO DRIVE",modal:true}); }
+  function showHelp(){ openDialog(PAGES[ui.lang][mode()],{title:TITLES[ui.lang].help,modal:true}); }
   function updateDialog(dt){
     if(!dl.open) return;
     if(dl.shown<dl.len){ dl.shown=Math.min(dl.len,dl.shown+dt*45); renderDialog(); }
@@ -1324,7 +1354,17 @@ registerProcessor('engine-synth', EngineProc);`;
     if(e.key==="Enter"||e.key===" "||e.key==="Escape"){ e.preventDefault(); e.stopImmediatePropagation(); if(!e.repeat) e.key==="Escape"?closeDialog():advanceDialog(); }
   },{capture:true});
   { const prev=onSimEvent; onSimEvent=ev=>{ prev(ev);
-      if(ev.type==="msg" && TIPS[ev.msg] && !(dl.open&&dl.modal)) openDialog([TIPS[ev.msg][mode()]],{title:"TIP",modal:false}); }; }
+      if(ev.type==="msg" && TIPS[ui.lang][ev.msg] && !(dl.open&&dl.modal)) openDialog([TIPS[ui.lang][ev.msg][mode()]],{title:TITLES[ui.lang].tip,modal:false}); }; }
+  const langBtn=$("btnLang");
+  function setLang(l,announce){
+    ui.lang=l; try{ localStorage.setItem("mdc-lang",l); }catch(e){}
+    langBtn.innerHTML=l==="th"?'<b>TH</b>/EN':'TH/<b>EN</b>';
+    document.documentElement.lang=l;
+    if(dl.open){ const wasModal=dl.modal; closeDialog(); if(wasModal) showHelp(); }
+    if(announce){ mo.evMood="poke"; mo.evT=0.9; say(l==="th"?"ภาษาไทยจ้า~":"English now!"); }
+  }
+  langBtn.addEventListener("click",()=>setLang(ui.lang==="th"?"en":"th",true));
+  setLang(ui.lang,false);
 
   /* ============================== TOUCH PAD ==============================
      Floating handheld-style controller for phones/tablets. Buttons fire the
@@ -1345,7 +1385,7 @@ registerProcessor('engine-synth', EngineProc);`;
       e.preventDefault();
       try{ el.setPointerCapture(e.pointerId); }catch(_){}
       if(!audio.ctx && !audio.userOff) startAudio();
-      if(navigator.vibrate) navigator.vibrate(8);
+      if(navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(8);
       el.classList.add("down");
       if(dl.open && dl.modal){ advanceDialog(); el._skip=true; return; }
       el._skip=false;

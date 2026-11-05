@@ -31,7 +31,7 @@ On phones and tablets a handheld-style touch pad appears instead (toggle it with
 | `HAND BRAKE` | Toggle handbrake |
 | `PAUSE` | Pause |
 
-A short how-to dialog shows on the first visit; **HELP** in the menu brings it back.
+A short how-to dialog shows on the first visit; **HELP** in the menu brings it back. The dialog and mochi speak Thai by default; **TH/EN** in the menu switches language and the choice is remembered.
 
 Sound starts on the first key press or click. Use headphones or decent speakers; most of the engine note is low frequency.
 
