@@ -7,7 +7,7 @@
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  html, body { width:100%; height:100%; margin:0; overflow:hidden; background:#000; }
+  html, body { width:100%; height:100%; margin:0; overflow:hidden; background:#000; touch-action:manipulation; }
   body {
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
     padding:10px 16px; font-family:Consolas, "Courier New", monospace;
@@ -63,6 +63,94 @@
   }
   .hint.hidden { display:none; }
   .hint b { color:#6b7484; font-weight:normal; }
+
+  /* ---------- help dialog ---------- */
+  #dialog {
+    position:absolute; left:6%; right:6%; bottom:4%; z-index:5; display:none;
+    padding:12px 14px 14px; background:#05080d; color:#f2f3f5;
+    border:3px solid #f2f3f5; box-shadow:0 0 0 3px #000, 6px 6px 0 3px rgba(0,0,0,.55);
+    font:bold 13px/1.55 Consolas, "Courier New", monospace; letter-spacing:.02em; cursor:pointer;
+    user-select:none; -webkit-user-select:none;
+  }
+  #dialog.show { display:block; }
+  #dialog.tip { bottom:auto; top:4%; border-color:#ffb72b; }
+  #dialog.tip #dlgTitle { background:#ffb72b; }
+  #dlgTitle {
+    position:absolute; top:-13px; left:10px; padding:1px 7px; background:#f2f3f5; color:#05080d;
+    font:bold 10px Consolas, monospace; letter-spacing:.1em; white-space:pre;
+  }
+  #dlgText { min-height:2.9em; }
+  #dlgText .k {
+    display:inline-block; min-width:1.5em; padding:0 4px; margin:0 1px; text-align:center;
+    background:#f2f3f5; color:#05080d; box-shadow:0 2px 0 #7d8796; line-height:1.35;
+  }
+  #dlgMore { position:absolute; right:10px; bottom:4px; font-size:11px; animation:blink .8s steps(1) infinite; }
+  @keyframes blink { 50% { opacity:0; } }
+
+  /* ---------- touch pad (handheld style) ---------- */
+  .pad {
+    position:fixed; left:0; right:0; bottom:0; z-index:10; display:none;
+    padding:10px 16px calc(12px + env(safe-area-inset-bottom));
+    background:linear-gradient(#dcd9d2,#c5c1b8); border-radius:20px 20px 0 0;
+    box-shadow:0 -8px 22px rgba(0,0,0,.55), inset 0 2px 0 rgba(255,255,255,.65);
+    touch-action:none; user-select:none; -webkit-user-select:none; -webkit-touch-callout:none;
+    font:bold 9px Consolas, monospace; letter-spacing:.08em; color:#45415a;
+  }
+  body.has-pad .pad { display:block; }
+  .pad [data-k] { cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  .gears { display:flex; justify-content:center; gap:6px; margin-bottom:12px; }
+  .g {
+    min-width:34px; height:26px; padding:0 6px; border-radius:7px; display:grid; place-items:center;
+    background:#4a4752; color:#e8e6ee; font-size:12px; box-shadow:0 3px 0 #2a2830;
+  }
+  .g.on { background:#f02b32; color:#fff; box-shadow:0 3px 0 #8a1218; }
+  .g.hb { margin-left:6px; font-size:10px; }
+  .g.hb.on { background:#ffb72b; color:#2a2016; box-shadow:0 3px 0 #8a5d10; }
+  .prow { display:flex; align-items:center; justify-content:space-between; max-width:460px; margin:0 auto; }
+  .dpad { position:relative; width:126px; height:126px; flex:none; }
+  .dpad .d { position:absolute; width:42px; height:42px; background:#26252b; display:grid; place-items:center; color:#5d5a66; font-size:12px; }
+  .dpad .d.u { left:42px; top:0; border-radius:6px 6px 0 0; }
+  .dpad .d.dn { left:42px; top:84px; border-radius:0 0 6px 6px; }
+  .dpad .d.l { left:0; top:42px; border-radius:6px 0 0 6px; }
+  .dpad .d.r { left:84px; top:42px; border-radius:0 6px 6px 0; }
+  .dpad .c { position:absolute; left:42px; top:42px; width:42px; height:42px; background:#26252b; }
+  .dpad .c::after { content:""; position:absolute; inset:13px; border-radius:50%; background:#1c1b20; }
+  .dpad::before { content:""; position:absolute; inset:0; background:
+      linear-gradient(#26252b,#26252b) 42px 0/42px 126px no-repeat, linear-gradient(#26252b,#26252b) 0 42px/126px 42px no-repeat;
+    filter:drop-shadow(0 4px 0 #15141a); }
+  .dpad .lbl { position:absolute; font-size:8px; color:#6a667a; white-space:nowrap; }
+  .mid { display:flex; gap:14px; transform:rotate(-25deg); align-self:flex-end; margin-bottom:6px; }
+  .pill { display:flex; flex-direction:column; align-items:center; gap:5px; }
+  .pill i { display:block; width:42px; height:12px; border-radius:8px; background:#8d8a93; box-shadow:inset 0 -2px 0 #6d6a73, 0 2px 0 #5f5c66; }
+  .ab { position:relative; width:132px; height:112px; transform:rotate(-25deg); flex:none; }
+  .ab .bt { position:absolute; display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .ab .bt i { display:grid; place-items:center; width:54px; height:54px; border-radius:50%; font-style:normal; font-size:15px; color:#f6d6e2;
+    background:radial-gradient(circle at 35% 30%,#c23a72,#9b2257 60%); box-shadow:0 4px 0 #5e1233; }
+  .ab .bt.a { right:0; top:0; }
+  .ab .bt.b { left:0; top:42px; }
+  .down i, .d.down, .g.down { transform:translateY(2px); filter:brightness(.85); }
+  .down i { box-shadow:0 2px 0 #5e1233; }
+
+  body.has-pad { padding-bottom:calc(228px + env(safe-area-inset-bottom)); }
+  body.has-pad .stage { width:min(560px, 94vw, calc((100dvh - 360px) * 0.947)); }
+  body.has-pad .stage.noroad { width:min(560px, 94vw, calc((100dvh - 360px) * 1.616)); }
+  @media (orientation:landscape) and (max-height:540px) {
+    body.has-pad { padding:6px 200px; }
+    body.has-pad { gap:6px; justify-content:flex-start; }
+    body.has-pad .menu { gap:2px; padding:2px; }
+    body.has-pad .mb { height:20px; padding:0 6px; font-size:9px; gap:4px; }
+    body.has-pad .mb.vol input { width:48px; }
+    body.has-pad .sep { display:none; }
+    body.has-pad .stage { width:min(560px, calc(100vw - 410px), calc((100dvh - 84px) * 0.947)); }
+    body.has-pad .stage.noroad { width:min(560px, calc(100vw - 410px), calc((100dvh - 84px) * 1.616)); }
+    .pad { inset:0; padding:0; background:none; box-shadow:none; border-radius:0; pointer-events:none; color:#8b929d; }
+    .pad .prow { display:contents; }
+    .gears { position:fixed; left:14px; top:14px; width:176px; flex-wrap:wrap; justify-content:flex-start; pointer-events:auto; }
+    .g.hb { margin-left:0; }
+    .dpad { position:fixed; left:30px; bottom:22px; pointer-events:auto; }
+    .mid { position:fixed; right:34px; top:30px; transform:none; pointer-events:auto; }
+    .ab { position:fixed; right:22px; bottom:26px; pointer-events:auto; }
+  }
 </style>
 </head>
 <body>
@@ -78,6 +166,8 @@
   <button id="btnMochi" class="mb on" type="button"><i class="led"></i>MOCHI</button>
   <button id="btnPause" class="mb" type="button"><i class="led"></i>PAUSE</button>
   <button id="btnKeys" class="mb on" type="button"><i class="led"></i>KEYS</button>
+  <button id="btnPad" class="mb" type="button"><i class="led"></i>PAD</button>
+  <button id="btnHelp" class="mb" type="button">HELP</button>
   <button id="btnFull" class="mb" type="button">FULL</button>
 </nav>
 <div class="stage" id="stage">
@@ -85,8 +175,30 @@
   <canvas id="cluster" width="320" height="198" aria-label="Simulated automotive instrument cluster"></canvas>
   <canvas id="mochi" width="48" height="44" aria-label="Mochi mascot"></canvas>
   <div id="bubble"></div>
+  <div id="dialog" role="dialog" aria-live="polite"><div id="dlgTitle"></div><div id="dlgText"></div><div id="dlgMore"></div></div>
 </div>
 <div class="hint" id="hint"><b>I</b> START/STOP &nbsp; <b>↑</b> THROTTLE (+SHIFT = PART) &nbsp; <b>↓</b> BRAKE &nbsp; <b>SPACE</b> HANDBRAKE<br><b>P R N D S L</b> GEAR &nbsp; <b>+ / −</b> MANUAL STEP &nbsp; <b>← →</b> SIGNAL / LANE CHANGE &nbsp; <b>ESC</b> PAUSE</div>
+<div class="pad" id="pad" aria-label="Touch controller">
+  <div class="gears">
+    <div class="g" data-k="g:P">P</div><div class="g" data-k="g:R">R</div><div class="g" data-k="g:N">N</div>
+    <div class="g" data-k="g:D">D</div><div class="g" data-k="g:S">S</div><div class="g" data-k="g:L">L</div>
+    <div class="g hb" data-k="hb">HAND<br>BRAKE</div>
+  </div>
+  <div class="prow">
+    <div class="dpad">
+      <div class="d u" data-k="up">▲</div><div class="d l" data-k="left">◀</div><div class="c"></div>
+      <div class="d r" data-k="right">▶</div><div class="d dn" data-k="down">▼</div>
+    </div>
+    <div class="mid">
+      <div class="pill" data-k="select"><i></i>PAUSE</div>
+      <div class="pill" data-k="start"><i></i>START</div>
+    </div>
+    <div class="ab">
+      <div class="bt b" data-k="b"><i>B</i>BRAKE</div>
+      <div class="bt a" data-k="a"><i>A</i>GAS</div>
+    </div>
+  </div>
+</div>
 <script>
 (() => {
   "use strict";
@@ -298,7 +410,7 @@ registerProcessor('engine-synth', EngineProc);`;
       fuel:72, coolant:24, oilTemp:24, oilLevel:98, oilPressure:0, voltage:12.5, odometer:12345.6, trip:0,
       msg:"", msgT:0, P
     };
-    const flash=(m)=>{ S.msg=m; S.msgT=1.8; };
+    const flash=(m)=>{ S.msg=m; S.msgT=1.8; hooks.event({type:"msg",msg:m}); };
     const isDrive=g=>g==="D"||g==="S"||g==="L"||g==="R";
     function stepFor(r){ let i=0; for(let k=0;k<P.steps.length;k++) if(P.steps[k]>=r*0.97) i=k; return i; }
 
@@ -548,6 +660,7 @@ registerProcessor('engine-synth', EngineProc);`;
     audio.starting=true;
     const ac=new AC({latencyHint:"interactive"});
     audio.ctx=ac;
+    if(ac.resume) ac.resume();
     const comp=ac.createDynamicsCompressor();
     comp.threshold.value=-12; comp.knee.value=8; comp.ratio.value=3; comp.attack.value=0.004; comp.release.value=0.15;
     const body=ac.createBiquadFilter(); body.type="peaking"; body.frequency.value=95; body.Q.value=0.9; body.gain.value=4;
@@ -1142,6 +1255,130 @@ registerProcessor('engine-synth', EngineProc);`;
     void kmh;
   }
 
+  /* ============================== HELP DIALOG ==============================
+     Game-style text box. Intro (first visit or HELP button) + short tips when
+     the sim refuses an action (e.g. leaving P without the brake).
+     ===================================================================== */
+  const dlg=$("dialog"), dlgText=$("dlgText"), dlgTitle=$("dlgTitle"), dlgMore=$("dlgMore");
+  const K=k=>({k});
+  const PAGES={
+    pc:[
+      ["Welcome! The car starts in ",K("P")," (Park) with the engine off."],
+      ["Press ",K("I")," to start the engine, then wait for the idle to settle."],
+      ["To leave Park, hold ",K("↓")," brake, then tap ",K("D"),". Like a real car, it won't shift without the brake."],
+      ["Hold ",K("↑")," to drive. ",K("Shift"),"+",K("↑")," gives gentle throttle."],
+      [K("←"),K("→")," signal and change lane. ",K("S")," sport mode, ",K("+"),K("−")," manual steps."]
+    ],
+    touch:[
+      ["Welcome! The car starts in ",K("P")," (Park) with the engine off."],
+      ["Tap ",K("START")," to start the engine, then wait for the idle to settle."],
+      ["To leave Park, hold ",K("B")," brake, then tap ",K("D"),". Like a real car, it won't shift without the brake."],
+      ["Hold ",K("A")," to drive. Let go to coast, hold ",K("B")," to stop."],
+      [K("◀"),K("▶")," signal and change lane. ",K("▲"),K("▼")," manual steps in D or S."]
+    ]
+  };
+  const TIPS={
+    "PRESS BRAKE":{pc:["Hold ",K("↓")," brake first, then tap the gear key."],touch:["Hold ",K("B")," brake first, then tap the gear."]},
+    "SHIFT TO P/N":{pc:["The engine only starts in ",K("P")," or ",K("N"),"."],touch:["The engine only starts in ",K("P")," or ",K("N"),"."]},
+    "SHIFT INHIBIT":{pc:["Slow down first. P and R only work below 6 km/h."],touch:["Slow down first. P and R only work below 6 km/h."]}
+  };
+  const dl={ open:false, modal:false, pages:[], page:0, shown:0, len:0, closeT:0, title:"" };
+  const esc=s=>s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+  const tokLen=p=>p.reduce((n,t)=>n+(typeof t==="string"?t.length:1),0);
+  function renderDialog(){
+    let left=Math.floor(dl.shown), html="";
+    for(const t of dl.pages[dl.page]){
+      if(left<=0) break;
+      if(typeof t==="string"){ html+=esc(t.slice(0,left)); left-=t.length; }
+      else { html+='<span class="k">'+esc(t.k)+"</span>"; left--; }
+    }
+    dlgText.innerHTML=html;
+    const done=dl.shown>=dl.len;
+    dlgMore.textContent=!done?"":dl.page<dl.pages.length-1?"▼":dl.modal?"OK":"";
+    dlgTitle.textContent=dl.title+(dl.pages.length>1?"  "+(dl.page+1)+"/"+dl.pages.length:"");
+  }
+  function openDialog(pages,{title,modal}){
+    dl.pages=pages; dl.page=0; dl.shown=0; dl.len=tokLen(pages[0]); dl.open=true; dl.modal=modal; dl.title=title;
+    dl.closeT=modal?0:4.5; dlg.classList.add("show"); dlg.classList.toggle("tip",!modal); renderDialog();
+  }
+  function closeDialog(){
+    dl.open=false; dlg.classList.remove("show");
+    if(dl.modal){ try{ localStorage.setItem("mdc-help-seen","1"); }catch(e){} }
+  }
+  function advanceDialog(){
+    if(!dl.open) return;
+    if(dl.shown<dl.len){ dl.shown=dl.len; renderDialog(); return; }
+    if(dl.page<dl.pages.length-1){ dl.page++; dl.shown=0; dl.len=tokLen(dl.pages[dl.page]); renderDialog(); return; }
+    closeDialog();
+  }
+  const mode=()=>ui.pad?"touch":"pc";
+  function showHelp(){ openDialog(PAGES[mode()],{title:"HOW TO DRIVE",modal:true}); }
+  function updateDialog(dt){
+    if(!dl.open) return;
+    if(dl.shown<dl.len){ dl.shown=Math.min(dl.len,dl.shown+dt*45); renderDialog(); }
+    if(!dl.modal){ dl.closeT-=dt; if(dl.closeT<=0) closeDialog(); }
+  }
+  dlg.addEventListener("pointerdown",e=>{ e.preventDefault(); advanceDialog(); });
+  window.addEventListener("keydown",e=>{
+    if(!dl.open||!dl.modal) return;
+    if(e.key==="Enter"||e.key===" "||e.key==="Escape"){ e.preventDefault(); e.stopImmediatePropagation(); if(!e.repeat) e.key==="Escape"?closeDialog():advanceDialog(); }
+  },{capture:true});
+  { const prev=onSimEvent; onSimEvent=ev=>{ prev(ev);
+      if(ev.type==="msg" && TIPS[ev.msg] && !(dl.open&&dl.modal)) openDialog([TIPS[ev.msg][mode()]],{title:"TIP",modal:false}); }; }
+
+  /* ============================== TOUCH PAD ==============================
+     Floating handheld-style controller for phones/tablets. Buttons fire the
+     same key events as the keyboard, so every control goes through one path.
+     ===================================================================== */
+  const pad=$("pad");
+  const isTouch=matchMedia("(hover: none) and (pointer: coarse)").matches || /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+  const vkey=(key,type)=>window.dispatchEvent(new KeyboardEvent(type,{key,bubbles:true,cancelable:true}));
+  const PAD_KEYS={ up:"+", down:"-", left:"ArrowLeft", right:"ArrowRight", a:"ArrowUp", b:"ArrowDown", start:"i", select:"Escape" };
+  const HOLD=new Set(["a","b"]);
+  function setPad(on){
+    ui.pad=on; document.body.classList.toggle("has-pad",on); padBtn.classList.toggle("on",on);
+    if(on){ hintEl.classList.add("hidden"); $("btnKeys").classList.remove("on"); }
+  }
+  pad.querySelectorAll("[data-k]").forEach(el=>{
+    const id=el.dataset.k;
+    const press=e=>{
+      e.preventDefault();
+      try{ el.setPointerCapture(e.pointerId); }catch(_){}
+      if(!audio.ctx && !audio.userOff) startAudio();
+      if(navigator.vibrate) navigator.vibrate(8);
+      el.classList.add("down");
+      if(dl.open && dl.modal){ advanceDialog(); el._skip=true; return; }
+      el._skip=false;
+      if(id.startsWith("g:")){ vkey(id.slice(2).toLowerCase(),"keydown"); vkey(id.slice(2).toLowerCase(),"keyup"); return; }
+      if(id==="hb"){ S.handbrake=!S.handbrake; return; }
+      const key=PAD_KEYS[id];
+      vkey(key,"keydown");
+      if(!HOLD.has(id)) vkey(key,"keyup");
+    };
+    const release=()=>{
+      el.classList.remove("down");
+      if(!el._skip && HOLD.has(id)) vkey(PAD_KEYS[id],"keyup");
+      el._skip=false;
+    };
+    el.addEventListener("pointerdown",press);
+    el.addEventListener("pointerup",release);
+    el.addEventListener("pointercancel",release);
+    el.addEventListener("lostpointercapture",()=>{ if(el.classList.contains("down")) release(); });
+  });
+  pad.addEventListener("contextmenu",e=>e.preventDefault());
+  const padGears=[...pad.querySelectorAll("[data-k^='g:']")], hbBtn=pad.querySelector("[data-k='hb']");
+  function syncPad(){
+    if(!ui.pad) return;
+    for(const g of padGears) g.classList.toggle("on",g.dataset.k.slice(2)===S.gear);
+    hbBtn.classList.toggle("on",S.handbrake);
+  }
+  const padBtn=$("btnPad");
+  padBtn.addEventListener("click",()=>setPad(!ui.pad));
+  $("btnHelp").addEventListener("click",showHelp);
+  setPad(isTouch);
+  let seen=false; try{ seen=localStorage.getItem("mdc-help-seen")==="1"; }catch(e){}
+  if(!seen) setTimeout(showHelp,400);
+
   /* ============================== INPUT ============================== */
   const keys=new Set();
   const gearKeys={p:"P",r:"R",n:"N",d:"D",s:"S",l:"L"};
@@ -1201,6 +1438,8 @@ registerProcessor('engine-synth', EngineProc);`;
     updateMochi(dt);
     drawMochi();
     syncMenu();
+    syncPad();
+    updateDialog(dt);
     requestAnimationFrame(frame);
   }
   draw(performance.now());

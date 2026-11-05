@@ -19,6 +19,20 @@ A low-res digital instrument cluster for a small turbo car with a CVT, running i
 | `←` / `→` | Turn signal. Above 25 km/h it also changes lane |
 | `Esc` | Pause |
 
+On phones and tablets a handheld-style touch pad appears instead (toggle it with **PAD** in the menu):
+
+| Button | Action |
+| --- | --- |
+| `START` | Start / stop the engine |
+| `A` / `B` | Gas / brake (hold) |
+| `P` `R` `N` `D` `S` `L` | Gear selector. Hold `B` to leave P |
+| `▲` / `▼` | Manual steps |
+| `◀` / `▶` | Turn signal / lane change |
+| `HAND BRAKE` | Toggle handbrake |
+| `PAUSE` | Pause |
+
+A short how-to dialog shows on the first visit; **HELP** in the menu brings it back.
+
 Sound starts on the first key press or click. Use headphones or decent speakers; most of the engine note is low frequency.
 
 To drive off: press `I`, wait for idle, hold `↓` and press `D`, then hold `↑`.
