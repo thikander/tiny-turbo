@@ -47,6 +47,7 @@ To drive off: press `I`, wait for idle, hold `↓` and press `D`, then hold `↑
 - Scenery changes at random every 1 to 3 km between fields, mountain forest with tunnels, city, coast, Thai rice paddies and highway, crossfading between them.
 - A day clock starts at your local time and runs one game minute per second, with sunrise, sunset, stars, moon and clouds. Rain and thunderstorms come and go and leave the road wet.
 - Light comes from the sky, your headlights, street lamps and tunnel lamps. Cars, buildings and tunnels are drawn as 3D boxes.
+- Speed blur: above about 50 km/h the edges of the view smear toward the vanishing point, with streaks and a slight vignette that grow with speed.
 
 ## What is simulated
 
