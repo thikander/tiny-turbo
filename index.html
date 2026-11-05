@@ -1423,11 +1423,51 @@ registerProcessor('engine-synth', EngineProc);`;
     ctx.font="bold 7px Consolas, monospace"; ctx.fillStyle=color; ctx.textAlign="center"; ctx.textBaseline="middle"; ctx.fillText(str,x+w/2,y+h/2+0.5);
   }
   function slot(x,y,label,on,color){
-    rrPath(x,y,18,9,3.5); ctx.fillStyle=on?color:"#2a0b10"; ctx.fill();
-    ctx.strokeStyle="rgba(0,0,0,.55)"; ctx.lineWidth=1; ctx.stroke();
-    if(on){ ctx.save(); ctx.globalAlpha=0.35; rrPath(x-1,y-1,20,11,4); ctx.fillStyle=color; ctx.fill(); ctx.restore(); }
-    ctx.font="bold 6px Consolas, monospace"; ctx.fillStyle=on?"#160606":"#4a1a20"; ctx.textAlign="center"; ctx.textBaseline="middle";
-    ctx.fillText(label,x+9,y+5);
+    // recessed window in the plate
+    rrPath(x,y,18,9,3.5); ctx.fillStyle="#120406"; ctx.fill();
+    ctx.strokeStyle="rgba(0,0,0,.65)"; ctx.lineWidth=1; ctx.stroke();
+    if(on){
+      ctx.save();
+      ctx.shadowColor=color; ctx.shadowBlur=7;
+      const g=ctx.createLinearGradient(0,y,0,y+9); g.addColorStop(0,"#ffffff"); g.addColorStop(0.35,color); g.addColorStop(1,color);
+      rrPath(x+1,y+1,16,7,3); ctx.fillStyle=g; ctx.globalAlpha=0.92; ctx.fill();
+      ctx.restore();
+      ctx.font="bold 6px Consolas, monospace"; ctx.fillStyle="rgba(20,4,6,.9)"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText(label,x+9,y+5);
+    } else {
+      line(x+3,y+1.5,x+15,y+1.5,"rgba(255,255,255,.05)",1);
+      ctx.font="bold 6px Consolas, monospace"; ctx.fillStyle="#3a1219"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillText(label,x+9,y+5);
+    }
+  }
+  function gearWindow(ign){
+    const gears=["P","R","N","D","S","L"], cell=9, stepped=ign&&(S.manual||S.gear==="S"||S.dstep);
+    const w=gears.length*cell+cell+6, x0=160-w/2, y0=172, h=13;
+    // recessed black window
+    rrPath(x0,y0,w,h,4); ctx.fillStyle="#08080a"; ctx.fill();
+    ctx.strokeStyle="#2a0a0f"; ctx.lineWidth=1.2; ctx.stroke();
+    line(x0+4,y0+1.5,x0+w-4,y0+1.5,"rgba(0,0,0,.6)",1);
+    line(x0+4,y0+h+0.5,x0+w-4,y0+h+0.5,"rgba(255,255,255,.12)",1);
+    gears.forEach((g,i)=>{
+      const cx=x0+3+cell/2+i*cell, cy=y0+h/2+0.5, on=ign&&S.gear===g;
+      ctx.save();
+      if(on){
+        const glow=ctx.createRadialGradient(cx,cy,0,cx,cy,7); glow.addColorStop(0,"rgba(255,214,150,.55)"); glow.addColorStop(1,"rgba(255,214,150,0)");
+        ctx.fillStyle=glow; ctx.fillRect(cx-7,cy-7,14,14);
+        ctx.shadowColor="rgba(255,190,110,.95)"; ctx.shadowBlur=5;
+      }
+      ctx.font="bold 8px Arial, Helvetica, sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+      ctx.fillStyle=on?"#fff6e2":ign?"#3d3f46":"#24252a"; ctx.fillText(g,cx,cy);
+      ctx.restore();
+    });
+    // step number cell
+    const sx=x0+3+cell/2+gears.length*cell+2, sy=y0+h/2+0.5;
+    line(sx-cell/2-1,y0+3,sx-cell/2-1,y0+h-3,"#202126",1);
+    ctx.save();
+    if(stepped){ ctx.shadowColor="rgba(255,170,60,.95)"; ctx.shadowBlur=5; }
+    ctx.font="bold 8px Arial, Helvetica, sans-serif"; ctx.textAlign="center"; ctx.textBaseline="middle";
+    ctx.fillStyle=stepped?"#ffc266":"#24252a"; ctx.fillText(stepped?String(S.vgear+1):"-",sx,sy);
+    ctx.restore();
   }
   function drawAnalog(now){
     if(!plateTex) plateTex=makePlate();
@@ -1471,20 +1511,21 @@ registerProcessor('engine-synth', EngineProc);`;
     // ---- fuel + temperature twin dial
     const fx=268, fy=110, fr=42;
     face(fx,fy,fr);
-    const fpX=fx-17, tpX=fx+17;
-    const arcTicks=(px,a0,a1,n,red)=>{ for(let i=0;i<=n;i++){ const a=(a0+(a1-a0)*i/n)*Math.PI/180, big=i===0||i===n||i===n/2;
-      line(px+Math.cos(a)*(big?17:19),fy-Math.sin(a)*(big?17:19),px+Math.cos(a)*23,fy-Math.sin(a)*23,red&&i===red?"#e1222c":"#141416",big?1.5:1); } };
-    arcTicks(fpX,-50,50,8,0);
-    arcTicks(tpX,230,130,8,8);
-    atext("F",fpX+Math.cos(50*Math.PI/180)*29,fy-Math.sin(50*Math.PI/180)*29,8,"#141416");
-    atext("E",fpX+Math.cos(-50*Math.PI/180)*29,fy-Math.sin(-50*Math.PI/180)*29,8,"#141416");
-    atext("H",tpX+Math.cos(130*Math.PI/180)*29,fy-Math.sin(130*Math.PI/180)*29,8,"#141416");
-    atext("C",tpX+Math.cos(230*Math.PI/180)*29,fy-Math.sin(230*Math.PI/180)*29,8,"#141416");
-    atext("⛽",fpX+12,fy+1,7,S.fuel<15&&ign?"#e1222c":"#141416");
-    atext("♨",tpX-12,fy+1,7,S.coolant>108&&ign?"#e1222c":"#141416");
+    // two half-gauges facing each other: fuel pivot on the left, temp pivot on the right
+    const fpX=fx-23, tpX=fx+23;
+    const arcTicks=(px,a0,a1,n,redFrom)=>{ for(let i=0;i<=n;i++){
+      const a=(a0+(a1-a0)*i/n)*Math.PI/180, big=i===0||i===n||i===n/2, r0=big?9.5:11.5;
+      line(px+Math.cos(a)*r0,fy-Math.sin(a)*r0,px+Math.cos(a)*14.5,fy-Math.sin(a)*14.5,redFrom!=null&&i>=redFrom?"#e1222c":"#141416",big?1.6:1); } };
+    arcTicks(fpX,-55,55,8,null);           // E (bottom) .. F (top), ticks on the right of the pivot
+    arcTicks(tpX,235,125,8,7);             // C (bottom) .. H (top), ticks on the left, red end at H
+    const lab=(px,deg,r,t)=>atext(t,px+Math.cos(deg*Math.PI/180)*r,fy-Math.sin(deg*Math.PI/180)*r,8,"#141416");
+    lab(fpX,66,21,"F"); lab(fpX,-66,21,"E"); lab(tpX,114,21,"H"); lab(tpX,246,21,"C");
+    atext("⛽",fpX-8,fy+10,6,S.fuel<15&&ign?"#e1222c":"#3a3a40");
+    atext("♨",tpX+8,fy+10,6,S.coolant>108&&ign?"#e1222c":"#3a3a40");
+    line(fx,fy-24,fx,fy+24,"rgba(20,20,22,.18)",1);
     const fuelF=sweep!=null?sweep:S.fuel/100, tempF=sweep!=null?sweep:clamp((S.coolant-40)/90,0,1);
-    needle(fpX,fy,(-50+100*fuelF)*Math.PI/180,21,4); hub(fpX,fy,4);
-    needle(tpX,fy,(230-100*tempF)*Math.PI/180,21,4); hub(tpX,fy,4);
+    needle(fpX,fy,(-55+110*fuelF)*Math.PI/180,13.5,3); hub(fpX,fy,3.5);
+    needle(tpX,fy,(235-110*tempF)*Math.PI/180,13.5,3); hub(tpX,fy,3.5);
 
     // ---- warning lamps in the plate slots
     const sig=v=>v&&ui.blink;
@@ -1498,17 +1539,11 @@ registerProcessor('engine-synth', EngineProc);`;
     slot(280,24,"▶",ign&&sig(ui.right),"#2bff6a");
     slot(247,38,"ECO",ign&&run&&S.pedal<0.35&&S.pedal>0.02&&S.lock,"#2bff6a");
     slot(269,38,"FUEL",ign&&S.fuel<15,"#ffb72b");
-    slot(104,166,"TC",ign&&run&&S.lock,"#2bff6a");
-    slot(198,166,"STEP",ign&&run&&(S.dstep||S.manual||S.gear==="S"),"#ffb72b");
+    slot(100,173,"TC",ign&&run&&S.lock,"#2bff6a");
+    slot(202,173,"STEP",ign&&run&&(S.dstep||S.manual||S.gear==="S"),"#ffb72b");
 
-    // ---- gear strip under the speedo
-    const gears=["P","R","N","D","S","L"], gx=160-gears.length*9/2+4.5;
-    gears.forEach((g,i)=>{
-      const on=ign&&S.gear===g, x=gx+i*9;
-      if(on){ rrPath(x-4,174,8,10,2); ctx.fillStyle="#f6f2ea"; ctx.fill(); }
-      atext(g,x,179.5,8,on?"#141416":"#5a1820");
-    });
-    if(ign&&(S.manual||S.gear==="S"||S.dstep)) atext((S.manual?"M":"")+(S.vgear+1),gx+gears.length*9+3,179.5,7,"#f6f2ea");
+    // ---- backlit gear indicator under the speedo
+    gearWindow(ign);
 
     // ---- small LCDs: clock + oil pressure
     const d=new Date();
