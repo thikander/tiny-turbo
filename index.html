@@ -7,7 +7,9 @@
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  html, body { width:100%; height:100%; margin:0; overflow:hidden; background:#000; touch-action:pan-x pan-y; overscroll-behavior:none; }
+  html, body { width:100%; height:100%; margin:0; overflow:hidden; background:#000; touch-action:none; overscroll-behavior:none; }
+  *, *::before, *::after { touch-action:none; -webkit-tap-highlight-color:transparent; }
+  input[type=range] { touch-action:none; }
   body {
     display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
     padding:10px 16px; font-family:Consolas, "Courier New", monospace;
@@ -667,19 +669,13 @@ registerProcessor('engine-synth', EngineProc);`;
   const $=id=>document.getElementById(id);
   const soundButton=$("btnSound");
   function setSoundUI(on,label){ soundButton.classList.toggle("on",on); soundButton.lastChild.textContent=label||(on?"SOUND":"SOUND"); }
-  const audio={ ctx:null, port:null, syn:null, on:false, starting:false, userOff:false,
+  const audio={ ctx:null, port:null, syn:null, on:false, ready:null, userOff:false,
     send(p){ if(this.port) this.port.postMessage({p}); else if(this.syn) Object.assign(this.syn.t,p); },
     event(ev){ if(!this.on) return; if(this.port) this.port.postMessage({ev}); else if(this.syn) this.syn.event(ev); }
   };
-  async function startAudio(){
-    if(audio.starting) return;
-    if(audio.ctx){ await audio.ctx.resume(); audio.on=true; setSoundUI(true); return; }
-    const AC=window.AudioContext||window.webkitAudioContext;
-    if(!AC){ setSoundUI(false,"NO AUDIO"); return; }
-    audio.starting=true;
-    const ac=new AC({latencyHint:"interactive"});
-    audio.ctx=ac;
-    if(ac.resume) ac.resume();
+  // Builds the audio graph once. The AudioContext itself is created and resumed
+  // synchronously inside a user gesture (see unlockAudio), which mobile browsers require.
+  async function buildAudio(ac){
     const comp=ac.createDynamicsCompressor();
     comp.threshold.value=-12; comp.knee.value=8; comp.ratio.value=3; comp.attack.value=0.004; comp.release.value=0.15;
     const body=ac.createBiquadFilter(); body.type="peaking"; body.frequency.value=95; body.Q.value=0.9; body.gain.value=4;
@@ -698,8 +694,19 @@ registerProcessor('engine-synth', EngineProc);`;
       src.onaudioprocess=e=>{ const o=e.outputBuffer.getChannelData(0); audio.syn.render(o,o.length); };
     }
     src.connect(body);
-    if(ac.state==="suspended") await ac.resume();
-    audio.on=true; audio.starting=false;
+  }
+  function startAudio(){
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC){ setSoundUI(false,"NO AUDIO"); return; }
+    if(!audio.ctx){
+      audio.ctx=new AC({latencyHint:"interactive"});
+      audio.ready=buildAudio(audio.ctx);
+    }
+    const ac=audio.ctx;
+    try{ if(ac.state!=="running") ac.resume(); }catch(e){}
+    // iOS: playing a silent buffer inside the gesture unlocks output
+    try{ const b=ac.createBuffer(1,1,22050), s=ac.createBufferSource(); s.buffer=b; s.connect(ac.destination); s.start(0); }catch(e){}
+    audio.on=true;
     setSoundUI(true);
   }
   function stopAudio(){
@@ -710,17 +717,25 @@ registerProcessor('engine-synth', EngineProc);`;
   soundButton.addEventListener("click",()=>{
     if(!audio.userOff){ audio.userOff=true; stopAudio(); } else { audio.userOff=false; startAudio(); }
   });
-  // Browsers only allow audio after a user gesture: start on the first key/click.
-  // Sound is on by default; browsers only allow it to start after the first touch/key/click.
+  // Sound is on by default. Browsers only let it start inside a user gesture, so every
+  // gesture event (captured before anything else can stop it) retries until it is running.
   setSoundUI(true);
-  const autoAudio=e=>{ if(e.target && e.target.closest && e.target.closest("#btnSound")) return; if(!audio.userOff && (!audio.ctx || audio.ctx.state==="suspended")) startAudio(); };
+  const unlockAudio=e=>{
+    if(audio.userOff) return;
+    if(e.target && e.target.closest && e.target.closest("#btnSound")) return;
+    if(!audio.ctx || audio.ctx.state!=="running") startAudio();
+  };
+  for(const ev of ["pointerdown","pointerup","touchend","mousedown","keydown","click"])
+    window.addEventListener(ev,unlockAudio,{capture:true,passive:true});
+  document.addEventListener("visibilitychange",()=>{ if(!document.hidden && audio.on && audio.ctx && audio.ctx.state!=="running") try{ audio.ctx.resume(); }catch(e){} });
   // No pinch / double-tap zoom on phones (iOS ignores user-scalable=no).
   document.addEventListener("gesturestart",e=>e.preventDefault(),{passive:false});
-  document.addEventListener("touchmove",e=>{ if(e.touches.length>1) e.preventDefault(); },{passive:false});
+  document.addEventListener("gesturechange",e=>e.preventDefault(),{passive:false});
+  document.addEventListener("touchstart",e=>{ if(e.touches.length>1) e.preventDefault(); },{passive:false});
+  document.addEventListener("touchmove",e=>{ if(e.touches.length>1 || e.scale&&e.scale!==1) e.preventDefault(); },{passive:false});
+  document.addEventListener("dblclick",e=>e.preventDefault(),{passive:false});
   let lastTouchEnd=0;
-  document.addEventListener("touchend",e=>{ const n=Date.now(); if(n-lastTouchEnd<300 && !(e.target.closest && e.target.closest("input"))) e.preventDefault(); lastTouchEnd=n; },{passive:false});
-  window.addEventListener("keydown",autoAudio);
-  window.addEventListener("pointerdown",autoAudio);
+  document.addEventListener("touchend",e=>{ const n=Date.now(); if(n-lastTouchEnd<350 && !(e.target.closest && e.target.closest("input"))) e.preventDefault(); lastTouchEnd=n; },{passive:false});
 
   /* ============================== SIM ============================== */
   let onSimEvent=()=>{};
@@ -1411,7 +1426,7 @@ registerProcessor('engine-synth', EngineProc);`;
     const press=e=>{
       e.preventDefault();
       try{ el.setPointerCapture(e.pointerId); }catch(_){}
-      if(!audio.ctx && !audio.userOff) startAudio();
+      if(!audio.userOff && (!audio.ctx || audio.ctx.state!=="running")) startAudio();
       if(navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive)) navigator.vibrate(8);
       el.classList.add("down");
       if(dl.open && dl.modal){ advanceDialog(); el._skip=true; return; }
