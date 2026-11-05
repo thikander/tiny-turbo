@@ -12,13 +12,13 @@ Read this before changing anything. It covers what the project is, how the code 
 A browser toy and small game in **one HTML file** (`index.html`, no build, no dependencies):
 
 - **Cluster:** a low-res instrument cluster drawn on a 320×198 canvas. There are two styles: **digital** (the default) and a 90s **analog** one with a red brushed plate.
-- **Road view:** a 320×140 canvas showing a night drive in pseudo-3D.
+- **Road view:** a 320×140 canvas: segment-projected 3D road with hills, biomes, a day clock, weather and three cameras.
 - **Mochi:** a pixel mascot that floats over the page and reacts to how you drive.
 - **Car simulation:** a realistic 1.3 L turbo engine, a torque converter, a CVT with stepped modes, and vehicle physics.
 - **Engine sound:** synthesized live in an AudioWorklet. There are no audio samples.
 - **Game:** a few traffic cars, shown only as tail-light silhouettes, to dodge by changing lane. A crash shows a plain screen with the distance driven.
 - **Touch:** a handheld-style touch pad on phones.
-- **Languages:** Thai (default) and English for the help dialog and mochi.
+- **Languages:** Thai (default) and English for all UI outside the cluster (menu, pad, hint, dialog, mochi, crash screen). The cluster canvas stays English.
 
 ### Look and feel (keep it)
 
@@ -48,11 +48,11 @@ The script is one IIFE. Sections are marked by banner comments, so search for `/
 | `createSim` between `/*SIM-BEGIN*/` and `/*SIM-END*/` | The vehicle simulation. It uses no DOM, only a `hooks.event(ev)` callback. `tools/sim-check.js` cuts the file at these markers, so keep them. |
 | `AUDIO` | Builds the audio graph, unlocks sound on a gesture, and runs the SOUND button. |
 | `SIM` | Creates the sim and the `ui` state object; `S` is the sim state. |
-| `ROAD VIEW` | Pseudo-3D road, scenery and lane-change movement. |
-| `TRAFFIC GAME` | Traffic cars, collision, the crash screen and restarting a run. |
-| `MOCHI` | The mascot: moods, drawing, drag and poke. |
-| `MENU` | Settings panel buttons and volume. |
-| `DRAW` | The digital cluster, plus `glow()`, `lamp()`, `fadeLine()` and the gauges. |
+| `ROAD VIEW` | Track generator, camera/projection, sky and day clock, biomes, scenery objects, lighting, lane-change movement. |
+| `TRAFFIC GAME` | Traffic cars, collision, the crash screen, restarting a run, and `drawCar()` (3D traffic cars). |
+| `MOCHI` | The mascot: `FACES`, `LINES` (TH/EN), base mood with debounce/dwell, reactions, idle actions, `watchWorld()`, drawing, drag and poke. |
+| `MENU` | `UI_TXT` + `applyUiLang()` (UI translation), settings panel buttons and volume. |
+| `DRAW` | The digital cluster, plus `glow()`, `lamp()`, `fadeLine()`, the gauges and the trip computer (`tripPage()`). |
 | `ANALOG CLUSTER` | `drawAnalog()`. `draw()` hands off to it when `ui.cluster==="analog"`. |
 | `HELP DIALOG` | RPG-style text box, the pages and tips (TH and EN), and the TH/EN switch. |
 | `TOUCH PAD` | Touch controller. Its buttons send fake keyboard events, so touch and keyboard share one input path. |
@@ -103,8 +103,12 @@ The constants live in `P`. They describe a 1150 kg car with 0.30 m wheels, a fin
 
 ### 4.3 Road view and lane change
 
-- **Projection:** one scanline at a time, using `z = CAM_H*f/dy`. The field of view widens with speed. Curvature drifts randomly, and the heading moves the stars, moon and mountains.
-- **Scenery:** objects every 15 m (posts, trees, pines, lamps, signs) are sorted far to near. Lighting comes from `lightAt(z)` (headlights only with the ignition on) and fog from `fogAt(z)`.
+- **Track:** `genSeg()` builds 4 m segments ahead on demand (`segAt(n)`, pruned behind). Each segment stores curvature `k`, grade `g`, heading `th`, centre `X`, height `Y`, its biome `b`, the next biome `nb`, a crossfade `mix`, a tunnel flag and rain. Curvature and grade follow random walks scaled by the biome (`curvy`, `hilly`). Zones last 280–700 segments and blend over the last 60. Forest zones can contain tunnels. The grade under the car goes to the sim as `S.grade`.
+- **Camera:** one view only, from the driver's seat (`CAM_H` 1.22 m) with the hood at the bottom. The owner asked for no camera switching.
+- **Projection:** `proj(s,x,y)` places a world point (distance along the road, lateral offset, height) relative to the camera's road position, heading and grade, so curves and crests are real. The ground is drawn near to far, one scanline at a time inside each segment (perspective-correct 1/z), and only above the current crest line. Each segment's crest line is kept in `clips[]`, and objects are drawn far to near clipped to it (`CLIP`, `R()`, `quad()`).
+- **3D boxes:** `box()` draws the back face plus whichever side and top faces the camera can see. Cars, buildings, tunnels and the portal use it.
+- **Environment:** `updateEnv()` interpolates `SKYK` keyframes by `road.hour` (starts at local time, +1 game minute per real second), greys it with rain, and sets ambient light, stars, fog and whether headlights and lamps are on. `lightAt(s,z,sg)` = ambient + headlights + lamp pools (+ tunnel lamps), as RGB. `HEADK` lets the grass take less headlight than the road.
+- **Biomes:** `BIOMES` (field, forest, city, coast, paddy, highway) set colours, background layer, lamp spacing and decorations in `decor()`.
 - **Lanes:** traffic drives on the left, so the home lane is `camX=-1.8` and the other lane is `+1.8`. Pressing `←`/`→` sets the turn signal. After 0.6 s the lane changes using a critically damped move capped at 2.2 m/s² sideways (about 3.5 s, no overshoot). The signal cancels itself afterwards.
 
 ### 4.4 Traffic game
@@ -114,7 +118,7 @@ The constants live in `P`. They describe a 1150 kg car with 0.30 m wheels, a fin
   - a new car every 6–16 s
   - random braking is rare
   - spawning always leaves a gap you can get through
-- **Look:** car bodies are dark silhouettes (sedan, hatch, SUV, van), and only the tail lights stay bright through the fog. `LIGHTS` defines 6 tail-light styles, and braking adds a high-mounted third brake light.
+- **Look:** 3D cars (`CARDIM`: sedan, hatch, SUV, pickup, van) painted from `PAINTS` and lit by the scene, so at night they read as dark shapes while the tail lights stay bright through the fog. `LIGHTS` defines 6 tail-light styles, and braking adds a high-mounted third brake light.
 - **Crash:** if a car is within 2.3 m ahead and within 1.7 m sideways, `crash()` shows `#fail`, which contains only `"<km> km"`. Any key or tap after 0.8 s calls `restartRun()`. While on the crash screen, key events are swallowed by a capture listener.
 - **Switch:** `ui.traffic` is the TRAFFIC toggle, saved under `mdc-traffic`. Off means no cars and no crashes.
 
@@ -122,7 +126,8 @@ The constants live in `P`. They describe a 1150 kg car with 0.30 m wheels, a fin
 
 - **Drawing:** a 48×44 canvas, pixel-filled through `ImageData`. It has an outline, shading, blush, several eye and mouth types, and effects (zzz, sweat, sparkles, puff, speed lines).
 - **Movement:** jelly squash from forward/backward acceleration, lean from sideways force, bumps, a floating bob and blinking. Its eyes follow the turn signals.
-- **Moods:** `pickMood()` checks them in order of priority (held, sleep, crank, event moods, limiter, turbo, fast, brake, …). Each mood has `say` (EN) and `th` lines; `sayList()` picks the list by `ui.lang`.
+- **Moods:** `baseMood()` maps the car state to a face, with a 0.6 s debounce and a 2.5 s minimum dwell (urgent faces switch faster), so it no longer flickers. `react(face,dur,cat,prio)` overrides it for events: sim events, traffic ahead, near misses, overtakes, biome/tunnel/rain/time-of-day changes, km milestones and pokes. Idle actions (hum, yawn, look around, wiggle, stretch) and small talk fill the calm moments.
+- **Speech:** `say(cat,prio)` picks from `LINES[lang][cat]` without repeating the last line, types it out, and moves the mouth while talking. The helper is `pickLine()` because the DRAW section already has a `line()` function (a duplicate function name silently overrides the earlier one).
 - **Interaction:** drag it to move it, and tap it to poke it.
 
 ### 4.6 UI, i18n and storage
@@ -137,6 +142,7 @@ The constants live in `P`. They describe a 1150 kg car with 0.30 m wheels, a fin
   | `mdc-help-seen` | `1` once the help has been seen |
   | `mdc-traffic` | `on` or `off` (default on) |
   | `mdc-cluster-style` | `analog` or `digital` (default digital; **only saved when the user clicks**) |
+  | `mdc-car` | JSON: odometer, trip, tripFuel, fuel, oilLevel (saved every 5 s and on pagehide) |
 
 - **Mobile:**
   - The pad appears automatically with `(hover:none) and (pointer:coarse)` or a mobile user agent.
