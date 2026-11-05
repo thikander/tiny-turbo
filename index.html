@@ -1,0 +1,1211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mini Digital Cluster</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { width:100%; height:100%; margin:0; overflow:hidden; background:#000; }
+  body {
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px;
+    padding:10px 16px; font-family:Consolas, "Courier New", monospace;
+  }
+  .menu {
+    display:flex; flex-wrap:wrap; align-items:center; justify-content:center; gap:4px;
+    padding:4px; max-width:94vw; background:#05080d; border:1px solid #1a212c;
+    box-shadow:inset 0 0 0 1px #000, 0 0 12px rgba(22,143,224,.06);
+  }
+  .mb {
+    display:inline-flex; align-items:center; gap:6px; height:24px; padding:0 9px;
+    font:10px Consolas, monospace; letter-spacing:.08em; color:#7f8998;
+    background:#0a0e15; border:1px solid #232b37; cursor:pointer; user-select:none;
+  }
+  .mb:hover { color:#f2f3f5; border-color:#5d6879; }
+  .mb:active { transform:translateY(1px); }
+  .mb .led { width:6px; height:6px; background:#1c232d; flex:none; }
+  .mb.on { color:#e3e7ec; }
+  .mb.on .led { background:#00f13c; box-shadow:0 0 5px #00f13c; }
+  .mb.warn { color:#ffb72b; border-color:#7a5a1c; }
+  .mb.ok { color:#00f13c; border-color:#1f6b35; }
+  .mb.vol { cursor:default; }
+  .mb.vol input { width:72px; height:12px; margin:0; accent-color:#168fe0; cursor:pointer; }
+  .sep { width:1px; height:18px; background:#1d2532; margin:0 3px; }
+  .stage {
+    position:relative; width:min(560px, 94vw, calc((100vh - 120px) * 0.947));
+    filter: drop-shadow(0 0 2px rgba(140,160,190,.12));
+  }
+  .stage.noroad { width:min(560px, 94vw, calc((100vh - 120px) * 1.616)); }
+  .stage.noroad #road { display:none; }
+  .stage canvas { display:block; width:100%; height:auto; image-rendering:pixelated; image-rendering:crisp-edges; }
+  #mochi {
+    position:absolute; width:17%; cursor:grab; touch-action:none; z-index:2;
+    filter: drop-shadow(0 2px 0 rgba(0,0,0,.35));
+  }
+  #mochi.drag { cursor:grabbing; }
+  #mochi.hidden, #bubble.hidden { display:none; }
+  #bubble {
+    position:absolute; z-index:3; transform:translate(-50%,-100%); pointer-events:none;
+    padding:3px 6px; background:#fff3f6; color:#2b1b25; border:2px solid #4a2f3d;
+    font:bold 10px/1.1 Consolas, monospace; letter-spacing:.04em; white-space:nowrap;
+    opacity:0; transition:opacity .15s;
+  }
+  #bubble.show { opacity:1; }
+  #bubble.bl { transform:translate(-100%,-50%); }
+  #bubble.br { transform:translate(0,-50%); }
+  #bubble::after { content:""; position:absolute; top:50%; margin-top:-4px; border:4px solid transparent; }
+  #bubble.bl::after { right:-10px; border-left-color:#4a2f3d; }
+  #bubble.br::after { left:-10px; border-right-color:#4a2f3d; }
+  .hint {
+    text-align:center; color:#3c4350; font:10px/1.5 Consolas, monospace; letter-spacing:.06em;
+    user-select:none;
+  }
+  .hint.hidden { display:none; }
+  .hint b { color:#6b7484; font-weight:normal; }
+</style>
+</head>
+<body>
+<nav class="menu" id="menu" aria-label="Cluster menu">
+  <button id="btnSound" class="mb" type="button"><i class="led"></i>SOUND</button>
+  <label class="mb vol">VOL <input id="vol" type="range" min="0" max="100" value="80" aria-label="Volume"></label>
+  <span class="sep"></span>
+  <button id="btnFuel" class="mb" type="button">REFUEL</button>
+  <button id="btnOil" class="mb" type="button">OIL</button>
+  <button id="btnTrip" class="mb" type="button">TRIP RESET</button>
+  <span class="sep"></span>
+  <button id="btnRoad" class="mb on" type="button"><i class="led"></i>ROAD</button>
+  <button id="btnMochi" class="mb on" type="button"><i class="led"></i>MOCHI</button>
+  <button id="btnPause" class="mb" type="button"><i class="led"></i>PAUSE</button>
+  <button id="btnKeys" class="mb on" type="button"><i class="led"></i>KEYS</button>
+  <button id="btnFull" class="mb" type="button">FULL</button>
+</nav>
+<div class="stage" id="stage">
+  <canvas id="road" width="320" height="140" aria-label="Road view"></canvas>
+  <canvas id="cluster" width="320" height="198" aria-label="Simulated automotive instrument cluster"></canvas>
+  <canvas id="mochi" width="48" height="44" aria-label="Mochi mascot"></canvas>
+  <div id="bubble"></div>
+</div>
+<div class="hint" id="hint"><b>I</b> START/STOP &nbsp; <b>↑</b> THROTTLE (+SHIFT = PART) &nbsp; <b>↓</b> BRAKE &nbsp; <b>SPACE</b> HANDBRAKE<br><b>P R N D S L</b> GEAR &nbsp; <b>+ / −</b> MANUAL STEP &nbsp; <b>← →</b> SIGNAL / LANE CHANGE &nbsp; <b>ESC</b> PAUSE</div>
+<script>
+(() => {
+  "use strict";
+  const canvas = document.getElementById("cluster");
+  const ctx = canvas.getContext("2d", { alpha: false });
+  ctx.imageSmoothingEnabled = false;
+
+  const C = {
+    bg:"#03060b", white:"#f2f3f5", muted:"#8b929d", dim:"#343b46", off:"#222933",
+    red:"#f02b32", green:"#00f13c", blue:"#168fe0", amber:"#ffb72b"
+  };
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const lerp=(a,b,t)=>a+(b-a)*t;
+
+  /* =====================================================================
+     ENGINE SOUND SYNTH  (runs inside an AudioWorklet, or ScriptProcessor fallback)
+     4-cylinder 4-stroke firing pulses (order 1-3-4-2) -> header + tailpipe
+     waveguide resonances -> muffler. Plus intake, turbo whistle, blow-off
+     valve, starter motor, CVT belt whine, road/wind, lever + drivetrain clunks.
+     ===================================================================== */
+  /*SYNTH-BEGIN*/
+  const SYNTH_SRC = `
+class SVF {
+  constructor(){ this.ic1=0; this.ic2=0; this.a1=0; this.a2=0; this.a3=0; this.k=1; this.lp=0; this.hp=0; }
+  set(fc,q,sr){ fc=Math.max(20,Math.min(fc,sr*0.45)); const g=Math.tan(Math.PI*fc/sr); this.k=1/q; this.a1=1/(1+g*(g+this.k)); this.a2=g*this.a1; this.a3=g*this.a2; }
+  run(x){ const v3=x-this.ic2; const v1=this.a1*this.ic1+this.a2*v3; const v2=this.ic2+this.a2*this.ic1+this.a3*v3;
+    this.ic1=2*v1-this.ic1; this.ic2=2*v2-this.ic2; this.lp=v2; this.hp=x-this.k*v1-v2; return v1; }
+}
+class EngineSynth {
+  constructor(sr){
+    this.sr=sr;
+    this.t={rpm:0,load:0,thr:0,turbo:0,boost:0,starter:0,speed:0,cut:1,running:0,pop:0,vol:0};
+    this.rpm=0;this.load=0;this.thr=0;this.turbo=0;this.boost=0;this.starter=0;this.speed=0;this.vol=0;
+    this.crank=0;this.lastFire=-1;
+    this.pa=new Float32Array(8);this.pt=new Float32Array(8).fill(1);this.ptau=new Float32Array(8).fill(0.001);this.pi=0;
+    this.cyl=[1.0,0.9,1.07,0.95];
+    this.d1=new Float32Array(8192);this.d2=new Float32Array(8192);this.di=0;
+    this.l1=Math.round(sr*0.0052);this.l2=Math.round(sr*0.0021);
+    this.f1=0;this.f2=0;this.m1=0;this.m2=0;this.dcx=0;this.dcy=0;this.mc=0.05;this.rasp=0.05;
+    this.intake=new SVF();this.whoosh=new SVF();this.bovF=new SVF();this.bovF2=new SVF();
+    this.wind=new SVF();this.popF=new SVF();this.starterF=new SVF();this.clickF=new SVF();
+    this.road=0;this.road2=0;this.env=0;
+    this.tPh=0;this.sPh=0;this.wPh=0;this.thPh=0;this.tf=1000;this.wf=600;
+    this.bov=0;this.bovAmt=0;this.bovAge=1;
+    this.thump=0;this.thumpAmt=0;this.click=0;this.click2=-1;this.popEnv=0;
+    this.seed=22222;this.ctr=0;
+    const e=(tc)=>Math.exp(-1/(sr*tc));
+    this.thDecay=e(0.075);this.clDecay=e(0.0035);this.popDecay=e(0.022);
+    this.clickF.set(3200,0.9,sr);this.bovF2.set(650,1.3,sr);this.wind.set(1000,0.5,sr);
+    this.popF.set(1400,0.8,sr);this.starterF.set(1100,2.0,sr);
+    this.updateFilters();
+  }
+  rnd(){ this.seed=(this.seed*1664525+1013904223)>>>0; return this.seed/4294967296; }
+  event(e){
+    if(e.type==='bov'){ this.bov=1; this.bovAmt=e.amt; this.bovAge=0; }
+    else if(e.type==='lever'){ this.click=1; this.click2=Math.round(this.sr*0.05); }
+    else if(e.type==='tick'){ this.click=e.amt; this.click2=-1; }
+    else if(e.type==='thump'){ this.thump=1; this.thumpAmt=e.amt; this.thPh=0; }
+  }
+  fire(i){
+    const t=this.t; let a;
+    if(t.running>0.5 && t.cut<0.5){ a=0.36+0.64*this.load; }
+    else if(this.starter>0.05){ a=0.14; }
+    else {
+      a=0.05;
+      if(t.running>0.5 && t.pop>0.05 && this.rpm>2300 && this.rnd()<0.06*t.pop){ a=1.6; this.popEnv=1; }
+    }
+    a*=this.cyl[i]*(1+(this.rnd()-0.5)*0.16);
+    const j=this.pi; this.pi=(this.pi+1)&7;
+    this.pa[j]=a; this.pt[j]=0; this.ptau[j]=0.0007+0.0011*Math.max(0,1-this.rpm/7000);
+  }
+  updateFilters(){
+    const sr=this.sr, rpm=this.rpm;
+    const fc=260+this.load*1500+rpm*0.11;
+    this.mc=1-Math.exp(-2*Math.PI*fc/sr);
+    this.rasp=0.04+0.16*this.load;
+    this.intake.set(360+rpm*0.12,1.4,sr);
+    this.tf=900+this.turbo*7200;
+    this.whoosh.set(600+this.turbo*3600,2.4,sr);
+    this.bovF.set(1200+2600*Math.min(1,this.bov*1.4),0.75,sr);
+    this.wf=520+this.speed*19;
+  }
+  render(out,n){
+    const sr=this.sr,t=this.t,dt=1/sr;
+    const kr=1-Math.exp(-dt/0.014), ks=1-Math.exp(-dt/0.045);
+    for(let s=0;s<n;s++){
+      if((this.ctr++&31)===0) this.updateFilters();
+      this.rpm+=(t.rpm-this.rpm)*kr; this.load+=(t.load-this.load)*kr; this.thr+=(t.thr-this.thr)*ks;
+      this.turbo+=(t.turbo-this.turbo)*ks; this.boost+=(t.boost-this.boost)*ks;
+      this.starter+=(t.starter-this.starter)*ks; this.speed+=(t.speed-this.speed)*ks; this.vol+=(t.vol-this.vol)*ks;
+
+      // crankshaft: two firings per revolution, cycle = 2 revolutions
+      this.crank+=this.rpm/60*dt; if(this.crank>=2) this.crank-=2;
+      const fi=(this.crank*2)|0;
+      if(fi!==this.lastFire){ this.lastFire=fi; if(this.rpm>40) this.fire(fi); }
+
+      // exhaust pressure pulses (blow-down + rarefaction tail)
+      let px=0;
+      for(let j=0;j<8;j++){
+        const age=this.pt[j];
+        if(age<0.03){
+          const x=age/this.ptau[j];
+          px+=this.pa[j]*(x*Math.exp(1-x)-0.3*(x/3)*Math.exp(1-x/3));
+          this.pt[j]=age+dt;
+        }
+      }
+      // header + tailpipe waveguides (comb resonances with damping)
+      const di=this.di;
+      const r1=this.d1[(di-this.l1)&8191], r2=this.d2[(di-this.l2)&8191];
+      this.f2+=(r2-this.f2)*0.55; this.f1+=(r1-this.f1)*0.4;
+      const h=px+0.36*this.f2; this.d2[di]=h;
+      const p=h+0.5*this.f1;   this.d1[di]=p;
+      this.di=(di+1)&8191;
+      // muffler
+      this.m1+=(p-this.m1)*this.mc; this.m2+=(this.m1-this.m2)*this.mc;
+      let eng=this.m2+(p-this.m2)*this.rasp;
+      const y=eng-this.dcx+0.996*this.dcy; this.dcx=eng; this.dcy=y; eng=y;
+
+      const nz=this.rnd()*2-1;
+      // intake roar, pulsed by the firing events
+      this.env+=(Math.abs(px)-this.env)*0.004;
+      const intake=this.intake.run(nz)*this.thr*(0.04+0.2*this.rpm/7000)*(0.4+2.5*this.env);
+
+      // turbo: shaft whistle + compressor whoosh
+      this.tPh+=this.tf*dt; this.tPh-=Math.floor(this.tPh);
+      const tb=this.turbo;
+      const whistle=Math.sin(6.283185*this.tPh)*0.012*tb*tb*(0.3+0.7*this.thr);
+      const whoosh=this.whoosh.run(nz)*0.06*tb*(0.15+0.85*Math.max(0,this.boost));
+
+      // blow-off valve: sharp chuff, then a falling hiss
+      let bov=0;
+      if(this.bov>0.0005){
+        this.bovAge+=dt;
+        this.bov*=Math.exp(-dt/(0.16+0.32*this.bovAmt));
+        const att=Math.min(1,this.bovAge/0.005);
+        const n2=this.rnd()*2-1;
+        bov=(this.bovF.run(n2)*0.9+this.bovF2.run(n2)*0.8*Math.exp(-this.bovAge/0.035))*this.bov*att*this.bovAmt*0.55;
+      }
+
+      // starter motor
+      let st=0;
+      if(this.starter>0.01){
+        this.sPh+=(this.rpm*2.6+160)*dt; this.sPh-=Math.floor(this.sPh);
+        const comp=0.65+0.45*Math.sin(this.crank*12.566);
+        st=((this.sPh*2-1)*0.35+this.starterF.run(nz)*0.7)*0.11*this.starter*comp;
+      }
+
+      // CVT belt whine, tyre roar, wind
+      const v=this.speed;
+      this.wPh+=this.wf*dt; this.wPh-=Math.floor(this.wPh);
+      const whine=Math.sin(6.283185*this.wPh)*0.0035*Math.min(1,v/40)*(0.4+this.load);
+      this.road+=(nz-this.road)*0.03; this.road2+=(this.road-this.road2)*0.03;
+      const road=this.road2*0.9*Math.min(1.3,v/110);
+      const wind=this.wind.run(this.rnd()*2-1)*0.05*(v/160)*(v/160);
+
+      // drivetrain thump (engagement / step shift)
+      let th=0;
+      if(this.thump>0.001){ this.thPh+=48*dt; th=Math.sin(6.283185*this.thPh)*this.thump*this.thumpAmt*0.4; this.thump*=this.thDecay; }
+      // mechanical clicks (gear lever detents, relay)
+      let cl=0;
+      if(this.click2>0){ if(--this.click2===0) this.click=0.75; }
+      if(this.click>0.001){ cl=this.clickF.run(nz)*this.click*0.5; this.click*=this.clDecay; }
+      // overrun pop
+      let pop=0;
+      if(this.popEnv>0.001){ pop=this.popF.run(nz)*this.popEnv*0.5; this.popEnv*=this.popDecay; }
+
+      let o=eng*0.42+intake+whistle+whoosh+bov+st+whine+road+wind+th+cl+pop;
+      o=Math.tanh(o*1.7)*0.7*this.vol;
+      out[s]=o;
+    }
+  }
+}`;
+  /*SYNTH-END*/
+  const WORKLET_SRC = SYNTH_SRC + `
+class EngineProc extends AudioWorkletProcessor {
+  constructor(){ super(); this.syn=new EngineSynth(sampleRate);
+    this.port.onmessage=(e)=>{ const d=e.data; if(d.p) Object.assign(this.syn.t,d.p); if(d.ev) this.syn.event(d.ev); }; }
+  process(inputs,outputs){ const o=outputs[0]; this.syn.render(o[0],o[0].length); for(let c=1;c<o.length;c++) o[c].set(o[0]); return true; }
+}
+registerProcessor('engine-synth', EngineProc);`;
+
+  /* =====================================================================
+     VEHICLE SIMULATION
+     1.3 L turbo I4, torque converter with lock-up, belt CVT with
+     simulated D-step / Sport / Manual ratio steps.
+     ===================================================================== */
+  /*SIM-BEGIN*/
+  function createSim(hooks) {
+    const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+    const lerp=(a,b,t)=>a+(b-a)*t;
+    const P = {
+      mass:1150, rw:0.30, fd:5.5, eta:0.90, cdA:0.436, roll:135,
+      Ie:0.16, idle:760, limit:6500, limitResume:6330, maxTq:210,
+      rMin:0.40, rMax:2.60, rRev:2.20, steps:[2.60,1.85,1.38,1.06,0.84,0.66,0.52],
+      Cs:0.0029, tankL:40
+    };
+    const NA=[[0,0],[500,50],[1000,78],[1500,92],[2000,102],[2500,109],[3000,114],[4000,122],[5000,119],[6000,107],[6500,98],[7500,75]];
+    function naTorque(rpm){
+      if(rpm<=0) return 0;
+      for(let i=1;i<NA.length;i++) if(rpm<=NA[i][0]){ const a=NA[i-1],b=NA[i]; return a[1]+(b[1]-a[1])*(rpm-a[0])/(b[0]-a[0]); }
+      return 75;
+    }
+    const S = {
+      ignition:false, engine:"off", crankT:0, crankPending:-1, crankA:0, runT:0, sweepT:9,
+      gear:"P", manual:false, dstep:false, dstepOff:0, vgear:0, shiftT:0, tqCutT:0, blipT:0, shiftFlash:0,
+      pedal:0, brake:0, handbrake:false, v:0, w:0, rpm:0, ratio:P.rMax, lock:false, engage:0,
+      turbo:0, map:1.0, thr:0, idleI:0.08, comb:0, cut:true, limiter:false, decelCut:false,
+      bovCool:0, bovT:0, popWin:0, prevPedal:0,
+      fuel:72, coolant:24, oilTemp:24, oilLevel:98, oilPressure:0, voltage:12.5, odometer:12345.6, trip:0,
+      msg:"", msgT:0, P
+    };
+    const flash=(m)=>{ S.msg=m; S.msgT=1.8; };
+    const isDrive=g=>g==="D"||g==="S"||g==="L"||g==="R";
+    function stepFor(r){ let i=0; for(let k=0;k<P.steps.length;k++) if(P.steps[k]>=r*0.97) i=k; return i; }
+
+    function doShift(dir){
+      S.vgear+=dir; S.shiftT=0.38; S.shiftFlash=0.3;
+      if(dir>0) S.tqCutT=0.15; else S.blipT=0.22;
+      hooks.event({type:"thump",amt:dir>0?0.22:0.14});
+    }
+
+    function tc(we,wT){
+      if(we>=wT){
+        const sr=we>1?Math.max(0,wT/we):0;
+        const cap=sr<0.8?1-0.3*sr:0.76*(1-sr)/0.2;
+        const tr=sr<0.85?2.0-sr/0.85:1.0;
+        const Tp=P.Cs*we*we*cap;
+        return [Tp,Tp*tr];
+      }
+      const sr=wT>1?we/wT:0;
+      const cap=sr<0.8?1-0.3*sr:0.76*(1-sr)/0.2;
+      const Tp=-P.Cs*wT*wT*cap*0.6;
+      return [Tp,Tp];
+    }
+    function brakeInt(v,a,bd,h){
+      let nv=v+a*h; const db=bd*h;
+      if(db>0){ if(Math.abs(nv)<=db) return 0; nv-=Math.sign(nv)*db; }
+      return nv;
+    }
+
+    function cvt(h){
+      const g=S.gear;
+      if(g==="R"){ S.ratio=P.rMax; return; }
+      const pedal=S.pedal, vf=Math.max(0,S.v), wOut=vf/P.rw*P.fd, kmh=vf*3.6;
+      let desired=S.ratio, kUp=0.6, kDown=0.6;
+      if(g==="P"||g==="N"||S.engine!=="running"){
+        if(vf<1) desired=P.rMax;
+        S.dstep=false;
+      } else {
+        if(g==="D" && !S.manual){
+          if(!S.dstep && pedal>0.78 && kmh>12){ S.dstep=true; S.dstepOff=0; S.vgear=stepFor(S.ratio); }
+          if(S.dstep){ if(pedal<0.4){ S.dstepOff+=h; if(S.dstepOff>0.8) S.dstep=false; } else S.dstepOff=0; }
+        }
+        const stepped=S.manual||g==="S"||S.dstep;
+        if(stepped){
+          if(S.shiftT<=0){
+            if(!S.manual){
+              const up=g==="S"?Math.min(6250,2300+3950*pedal):6050;
+              const down=g==="S"?1400+1900*pedal+S.brake*1500:2700;
+              if(S.rpm>up && S.vgear<6 && kmh>6) doShift(1);
+              else if(S.vgear>0 && S.rpm<down && kmh>6){
+                const after=S.rpm*P.steps[S.vgear-1]/P.steps[S.vgear];
+                if(after<5700) doShift(-1);
+              }
+            } else if(S.rpm<1050 && S.vgear>0 && S.lock) doShift(-1);
+          }
+          if(kmh<5 && S.vgear>0 && !S.lock) S.vgear=0;
+          desired=P.steps[S.vgear]; kUp=kDown=1.9;
+        } else {
+          let tRpm=g==="L"?2300+3500*Math.pow(pedal,1.2):1200+4450*Math.pow(pedal,1.6);
+          if(S.brake>0.15) tRpm=Math.max(tRpm,1400+1800*S.brake);
+          desired=wOut>2?(tRpm*Math.PI/30)/wOut:P.rMax;
+          kUp=0.35+0.9*(1-pedal);
+          kDown=0.6+4.5*pedal;
+        }
+      }
+      desired=clamp(desired,g==="L"?1.45:P.rMin,P.rMax);
+      const lr=Math.log(S.ratio), ld=Math.log(desired);
+      const m=(ld<lr?kUp:kDown)*h;
+      S.ratio=Math.exp(lr+clamp(ld-lr,-m,m));
+    }
+
+    function step(h){
+      // ---- engine state machine
+      if(S.crankPending>=0){ S.crankPending-=h; if(S.crankPending<0 && S.engine==="off"){ S.engine="cranking"; S.crankT=0; } }
+      if(S.engine==="cranking"){
+        S.crankT+=h;
+        if(S.crankT>0.65 && S.fuel>0.05 && S.rpm>150){ S.engine="running"; S.runT=0; S.idleI=0.1; }
+        else if(S.crankT>3.0){ S.engine="off"; flash(S.fuel<=0.05?"NO FUEL":"NO START"); }
+      }
+      const running=S.engine==="running", cranking=S.engine==="cranking";
+      if(running) S.runT+=h;
+      const rpm=S.rpm, pedal=S.pedal;
+
+      // ---- idle air control (PI) with cold fast-idle and start flare
+      const idleTarget=P.idle+clamp((55-S.coolant)/35,0,1)*380+560*Math.exp(-S.runT/0.8);
+      const err=idleTarget-rpm;
+      const ff=isDrive(S.gear)&&!S.lock?0.06*clamp(S.engage*2-0.6,0,1):0; // idle-up when the converter is loaded
+      const idleOpen=clamp(S.idleI+ff+err*0.0002,0,0.35);
+      if(running && pedal<idleOpen) S.idleI=clamp(S.idleI+err*0.0004*h,0,0.25);
+      let thr=running?Math.max(pedal,idleOpen):(cranking?0.08:0);
+
+      // ---- fuel cut: rev limiter + deceleration fuel cut
+      if(running){
+        if(rpm>P.limit) S.limiter=true; else if(rpm<P.limitResume) S.limiter=false;
+        const coast=pedal<0.02 && ((S.lock && S.v>6) || ((S.gear==="P"||S.gear==="N") && rpm>1700));
+        if(coast && rpm>1150) S.decelCut=true; else if(!coast || rpm<1000) S.decelCut=false;
+      } else { S.limiter=false; S.decelCut=false; }
+      S.cut=!running||S.limiter||S.decelCut||S.fuel<=0;
+      S.thr=thr;
+
+      // ---- manifold pressure + turbo
+      const x=0.03+25*Math.pow(thr,2.2);
+      const mapNA=Math.max(0.2,x/(x+rpm*0.0005+0.002));
+      const sport=S.gear==="S"||S.manual;
+      const maxBoost=sport?1.0:0.9;
+      const boostAvail=maxBoost*Math.pow(clamp((S.turbo-0.22)/0.55,0,1),1.3);
+      const mapT=mapNA*(1+boostAvail*Math.pow(mapNA,4));
+      S.map+=(mapT-S.map)*Math.min(1,h*(mapT>S.map?9:14));
+      const flow=(rpm/6000)*(S.cut?0.3:S.map);
+      const sT=Math.pow(clamp((flow-0.1)/0.85,0,1.1),0.8);
+      const tRate=sT>S.turbo?0.5+2.4*flow:(S.bovT>0?1.7:0.8);
+      S.turbo+=(sT-S.turbo)*clamp(tRate*h,0,1);
+
+      // blow-off valve on a sharp lift with boost in the manifold
+      if(S.prevPedal>=0.25 && pedal<0.25 && S.map>1.15 && S.bovCool<=0 && running){
+        hooks.event({type:"bov",amt:clamp((S.map-1)/0.9,0.25,1)});
+        S.bovCool=0.6; S.bovT=0.5;
+      }
+      if(S.prevPedal>0.6 && pedal<=0.6 && rpm>3500) S.popWin=1;
+      S.prevPedal=pedal;
+
+      // ---- engine torque
+      let comb=0;
+      if(!S.cut) comb=Math.min(P.maxTq,naTorque(rpm)*Math.max(0,(S.map-0.16)/0.84))*(S.tqCutT>0?0.55:1);
+      S.comb=comb;
+      const fric=rpm>5?8+rpm*0.0026+(S.oilTemp<40?4:0):0;
+      const pump=rpm>5?(1-Math.min(1,S.map))*14:0;
+      let Te=comb-fric-pump;
+      if(running && pedal<0.05) Te+=(Math.random()-0.5)*5;
+      if(cranking){
+        S.crankA+=rpm/60*h;
+        Te+=95*(1-rpm/320)+22*Math.sin(S.crankA*12.566);
+      }
+
+      // ---- drivetrain engagement (clutch-pack fill delay when selecting D/R)
+      const driveSel=isDrive(S.gear), hyd=rpm>350;
+      if(driveSel && hyd){
+        if(S.engage<1){ const b=S.engage; S.engage=Math.min(1,S.engage+h/0.55); if(b<0.6 && S.engage>=0.6) hooks.event({type:"thump",amt:0.55}); }
+      } else S.engage=driveSel?Math.max(0,S.engage-h*2):0;
+      const ef=clamp((S.engage-0.45)/0.4,0,1);
+
+      // ---- powertrain + vehicle
+      const dir=S.gear==="R"?-1:1;
+      const k=(S.gear==="R"?P.rRev:S.ratio)*P.fd/P.rw;
+      const wT=dir*S.v*k;
+      const Fres=P.roll*Math.tanh(S.v/0.4)+P.cdA*S.v*Math.abs(S.v);
+      let bDec=S.brake*9.8+(S.handbrake?3.4:0)+(S.gear==="P"?25:0);
+      let we=S.w;
+      if(ef>0 && S.lock){
+        const meff=P.mass+P.Ie*k*k;
+        const a=(dir*Te*k*(Te>0?P.eta:1/P.eta)-Fres)/meff;
+        S.v=brakeInt(S.v,a,bDec*P.mass/meff,h);
+        we=dir*S.v*k;
+      } else {
+        let Tp=0,Tt=0;
+        if(ef>0){ const r=tc(we,wT); Tp=r[0]*ef; Tt=r[1]*ef; }
+        we+=(Te-Tp)/P.Ie*h; if(we<0) we=0;
+        const a=(dir*Tt*k*P.eta-Fres)/P.mass;
+        S.v=brakeInt(S.v,a,bDec,h);
+      }
+      const kmh=S.v*3.6;
+      // torque-converter lock-up clutch
+      if(S.gear!=="R" && driveSel && ef>=1 && running){
+        if(!S.lock && kmh>18 && Math.abs(we-dir*S.v*k)<30 && !(pedal>0.85 && kmh<30)){ S.lock=true; we=S.v*k; }
+        else if(S.lock && (kmh<12 || (S.brake>0.5 && kmh<22) || we<70)) S.lock=false;
+      } else S.lock=false;
+      S.w=we; S.rpm=we*30/Math.PI;
+
+      if(running && S.rpm<330 && S.runT>1){ S.engine="off"; flash(S.fuel<=0?"NO FUEL":"ENGINE STALL"); }
+
+      cvt(h);
+
+      // ---- timers
+      S.shiftT-=h; S.tqCutT-=h; S.blipT-=h; S.shiftFlash-=h; S.bovCool-=h; S.bovT-=h; S.msgT-=h;
+      S.popWin=Math.max(0,S.popWin-h*0.7);
+
+      // ---- fluids, temperatures, electrics
+      const load=comb/P.maxTq;
+      const on=S.engine==="running";
+      const coolantTarget=on?88+load*8+Math.max(0,kmh)*0.01:S.coolant>24?24:S.coolant;
+      S.coolant=lerp(S.coolant,coolantTarget,h*(S.coolant<coolantTarget?0.012:(on?0.004:0.0008)));
+      const oilTarget=on?S.coolant+4+load*14:S.coolant;
+      S.oilTemp=lerp(S.oilTemp,oilTarget,h*(S.oilTemp<oilTarget?0.006:0.0025));
+      const visc=clamp((75-S.oilTemp)/55,0,1);
+      const levelF=clamp(S.oilLevel/15,0,1);
+      const opT=S.rpm>200?clamp(0.75+visc*0.65+(S.rpm/1000)*(0.42-visc*0.1),0,6)*levelF:0;
+      S.oilPressure=lerp(S.oilPressure,opT,clamp(h*6,0,1));
+      S.oilLevel=clamp(S.oilLevel-(on?0.000015+(S.rpm/7000)*0.000025+load*0.000035:0)*h,0,100);
+      const vT=!S.ignition?12.5:cranking?10.3+Math.sin(S.crankA*12.566)*0.4:on?14.1+Math.min(0.3,S.rpm/20000):12.2;
+      S.voltage=lerp(S.voltage,vT,clamp(h*(cranking?20:4),0,1));
+      // fuel: BSFC ~245 g/kWh on indicated power + idle base
+      if(on){
+        const kW=Math.max(0,comb*S.w/1000);
+        const gps=kW*245/3600+0.08;
+        S.fuel=clamp(S.fuel-gps/740/P.tankL*100*h,0,100);
+      }
+      const dist=Math.abs(S.v)*h/1000;
+      S.odometer+=dist; S.trip+=dist;
+    }
+
+    function selectGear(g){
+      if(g===S.gear){ if(S.manual){ S.manual=false; hooks.event({type:"lever"}); } return; }
+      const kmh=S.v*3.6;
+      if(S.gear==="P" && S.brake<0.3){ flash("PRESS BRAKE"); return; }
+      if((g==="P"||g==="R") && kmh>6){ flash("SHIFT INHIBIT"); return; }
+      if((g==="D"||g==="S"||g==="L") && kmh<-6){ flash("SHIFT INHIBIT"); return; }
+      const prev=S.gear; S.gear=g; S.manual=false; S.dstep=false;
+      hooks.event({type:"lever"});
+      if(!isDrive(prev) || (prev==="R")!==(g==="R")){ S.engage=0; S.lock=false; }
+      if(g==="S") S.vgear=stepFor(S.ratio);
+    }
+    function manualShift(dir){
+      if(S.gear!=="D" && S.gear!=="S") return;
+      if(S.engine!=="running") return;
+      if(!S.manual){ S.manual=true; S.dstep=false; S.vgear=stepFor(S.ratio); }
+      const ng=S.vgear+dir;
+      if(ng<0||ng>6) return;
+      if(dir<0 && S.lock){ const after=S.rpm*P.steps[ng]/P.steps[S.vgear]; if(after>P.limit-200){ flash("REV PROTECT"); return; } }
+      doShift(dir);
+    }
+    function ignitionPress(){
+      const pn=S.gear==="P"||S.gear==="N";
+      if(!S.ignition){
+        S.ignition=true; S.sweepT=0;
+        if(pn) S.crankPending=0.5; else flash("SHIFT TO P/N");
+        return;
+      }
+      if(S.engine==="off"){ if(pn){ S.engine="cranking"; S.crankT=0; } else flash("SHIFT TO P/N"); return; }
+      S.engine="off"; S.ignition=false; S.crankPending=-1; S.lock=false;
+    }
+    return { S, P, step, selectGear, manualShift, ignitionPress };
+  }
+  /*SIM-END*/
+
+  /* ============================== AUDIO ============================== */
+  const $=id=>document.getElementById(id);
+  const soundButton=$("btnSound");
+  function setSoundUI(on,label){ soundButton.classList.toggle("on",on); soundButton.lastChild.textContent=label||(on?"SOUND":"SOUND"); }
+  const audio={ ctx:null, port:null, syn:null, on:false, starting:false, userOff:false,
+    send(p){ if(this.port) this.port.postMessage({p}); else if(this.syn) Object.assign(this.syn.t,p); },
+    event(ev){ if(!this.on) return; if(this.port) this.port.postMessage({ev}); else if(this.syn) this.syn.event(ev); }
+  };
+  async function startAudio(){
+    if(audio.starting) return;
+    if(audio.ctx){ await audio.ctx.resume(); audio.on=true; setSoundUI(true); return; }
+    const AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC){ setSoundUI(false,"NO AUDIO"); return; }
+    audio.starting=true;
+    const ac=new AC({latencyHint:"interactive"});
+    audio.ctx=ac;
+    const comp=ac.createDynamicsCompressor();
+    comp.threshold.value=-12; comp.knee.value=8; comp.ratio.value=3; comp.attack.value=0.004; comp.release.value=0.15;
+    const body=ac.createBiquadFilter(); body.type="peaking"; body.frequency.value=95; body.Q.value=0.9; body.gain.value=4;
+    body.connect(comp); comp.connect(ac.destination);
+    let src;
+    try{
+      if(!ac.audioWorklet) throw new Error("no worklet");
+      const url=URL.createObjectURL(new Blob([WORKLET_SRC],{type:"application/javascript"}));
+      await ac.audioWorklet.addModule(url);
+      src=new AudioWorkletNode(ac,"engine-synth",{numberOfInputs:0,numberOfOutputs:1,outputChannelCount:[1]});
+      audio.port=src.port;
+    }catch(err){
+      const Synth=new Function(SYNTH_SRC+"\nreturn EngineSynth;")();
+      audio.syn=new Synth(ac.sampleRate);
+      src=ac.createScriptProcessor(1024,1,1);
+      src.onaudioprocess=e=>{ const o=e.outputBuffer.getChannelData(0); audio.syn.render(o,o.length); };
+    }
+    src.connect(body);
+    if(ac.state==="suspended") await ac.resume();
+    audio.on=true; audio.starting=false;
+    setSoundUI(true);
+  }
+  function stopAudio(){
+    audio.on=false; audio.send({vol:0});
+    setSoundUI(false);
+    setTimeout(()=>{ if(!audio.on && audio.ctx) audio.ctx.suspend(); },250);
+  }
+  soundButton.addEventListener("click",()=>{
+    if(audio.on){ audio.userOff=true; stopAudio(); } else { audio.userOff=false; startAudio(); }
+  });
+  // Browsers only allow audio after a user gesture: start on the first key/click.
+  const autoAudio=e=>{ if(e.target && e.target.tagName==="BUTTON") return; if(!audio.ctx && !audio.userOff) startAudio(); };
+  window.addEventListener("keydown",autoAudio);
+  window.addEventListener("pointerdown",autoAudio);
+
+  /* ============================== SIM ============================== */
+  let onSimEvent=()=>{};
+  const sim=createSim({ event:ev=>{ audio.event(ev); onSimEvent(ev); } });
+  const S=sim.S;
+  const ui={ left:false, right:false, blink:true, blinkClock:0, paused:false, last:performance.now(),
+             dispSpeed:0, dispRpm:0, rpmNum:0, rpmNumT:0 };
+
+/* ============================== ROAD VIEW ==============================
+     Low-res pseudo-3D road: per-scanline projection (z = camH*f/dy), curving
+     road, rumble strips, lane dashes, reflector posts, trees, street lamps,
+     parallax mountains. Headlights light the near road when ignition is on.
+     ===================================================================== */
+  const roadCanvas=$("road");
+  const rc=roadCanvas.getContext("2d",{alpha:false});
+  rc.imageSmoothingEnabled=false;
+  const RW=320, RH=140, HZ=50, CAM_H=1.25;
+  const road={ pos:0, k:0, kT:0, nextK:250, heading:0, camX:-1.8, lane:0, laneT:0, bump:0, bumpKick:false };
+  const hash=n=>{ const x=Math.sin(n*127.1+311.7)*43758.5453; return x-Math.floor(x); };
+  const STARS=[]; for(let i=0;i<80;i++) STARS.push([hash(i)*640|0, hash(i+99)*(HZ-8)|0, hash(i+7)]);
+  const MTN=new Float32Array(640), HILL=new Float32Array(640);
+  for(let i=0;i<640;i++){
+    const a=i/640*Math.PI*2;
+    MTN[i]=11+6*Math.sin(a*3+1)+4*Math.sin(a*7+2)+2.5*Math.sin(a*13)+1.2*Math.sin(a*31);
+    HILL[i]=4+3*Math.sin(a*5+4)+2*Math.sin(a*11+1)+1*Math.sin(a*23);
+  }
+  const skyGrad=rc.createLinearGradient(0,0,0,HZ+2);
+  skyGrad.addColorStop(0,"#05081a"); skyGrad.addColorStop(0.55,"#1a1536"); skyGrad.addColorStop(1,"#5c3459");
+  const FOG=[64,38,76];
+  function col(c,l,fog){
+    const r=c[0]*l, g=c[1]*l, b=c[2]*l;
+    return "rgb("+((r+(FOG[0]-r)*fog)|0)+","+((g+(FOG[1]-g)*fog)|0)+","+((b+(FOG[2]-b)*fog)|0)+")";
+  }
+  const lightAt=z=>Math.min(1,0.4+(S.ignition?0.75*clamp(1-(z-3)/42,0,1):0));
+  const fogAt=z=>clamp((z-30)/160,0,0.85);
+  function blob(x,y,r){ const R=Math.max(1,Math.round(r)); for(let i=-R;i<=R;i++){ const w=Math.sqrt(R*R-i*i); rc.fillRect(Math.round(x-w),Math.round(y+i),Math.max(1,Math.round(2*w)),1); } }
+
+  function updateRoad(dt){
+    const v=S.v, kmh=v*3.6;
+    road.pos+=v*dt;
+    if(road.pos>road.nextK || road.pos<road.nextK-900){
+      road.kT=Math.random()<0.35?0:(Math.random()*2-1)*0.0035;
+      road.nextK=road.pos+220+Math.random()*380;
+    }
+    road.k+=(road.kT-road.k)*clamp(Math.abs(v)*dt/120,0,1);
+    road.heading+=road.k*v*dt;
+    // lane change with the signal (left-hand traffic: home lane is the left one)
+    let want=-1;
+    if(kmh>25){
+      want=ui.right&&road.lane===0?1:ui.left&&road.lane===1?0:-1;
+      if(want>=0){ road.laneT+=dt; if(road.laneT>1.2){ road.lane=want; road.laneT=0; road.changing=true; } } else road.laneT=0;
+    }
+    const tx=road.lane?1.8:-1.8, rate=dt*1.1*clamp(kmh/40,0,1);
+    road.camX+=clamp(tx-road.camX,-rate,rate);
+    if(road.changing && Math.abs(tx-road.camX)<0.05){
+      road.changing=false;                       // lane change done: self-cancel the indicator
+      if(road.lane===1) ui.right=false; else ui.left=false;
+    }
+    if(Math.abs(kmh)>10 && Math.random()<dt*Math.abs(kmh)/180){ road.bump=1; road.bumpKick=true; }
+    road.bump*=Math.exp(-dt*16);
+  }
+
+  function drawRoad(now){
+    if(!ui.road) return;
+    const kmh=Math.abs(S.v*3.6);
+    const f=150-Math.min(200,kmh)*0.16;            // field of view widens with speed
+    let shake=0;
+    if(S.engine==="cranking"||S.limiter) shake=((now/45)|0)%2;
+    else if(road.bump>0.35) shake=1;
+    const hz=HZ+shake;
+    rc.fillStyle=skyGrad; rc.fillRect(0,0,RW,hz+1);
+    // stars + moon
+    const sOff=road.heading*120;
+    for(const s of STARS){
+      const x=(((s[0]-sOff)%640)+640)%640;
+      if(x<RW){ const tw=0.45+0.55*Math.abs(Math.sin(now/700+s[2]*20)); rc.fillStyle="rgba(230,230,255,"+(tw*s[2]).toFixed(2)+")"; rc.fillRect(x|0,s[1],1,1); }
+    }
+    const mx=(((262-road.heading*140)%640)+640)%640;
+    if(mx<RW+8){ rc.fillStyle="#efe6c8"; blob(mx,15,5); rc.fillStyle="#d4c9a8"; rc.fillRect((mx-2)|0,13,2,2); rc.fillRect((mx+1)|0,17,1,1); }
+    // parallax mountains + hills
+    const o1=road.heading*55, o2=road.heading*150;
+    rc.fillStyle="#1f1838";
+    for(let x=0;x<RW;x++){ const h=MTN[(((x+o1)|0)%640+640)%640]; rc.fillRect(x,hz-h,1,h+1); }
+    rc.fillStyle="#120e22";
+    for(let x=0;x<RW;x++){ const h=HILL[(((x+o2)|0)%640+640)%640]; rc.fillRect(x,hz-h,1,h+1); }
+    // ground scanlines
+    const camX=road.camX, kf=0.5*road.k*f;
+    for(let y=hz+1;y<RH;y++){
+      const dy=y-hz, z=CAM_H*f/dy, sx=f/z;
+      const cx=160+kf*z-camX*sx;
+      const hw=3.6*sx, rum=Math.max(1,0.45*sx), ln=Math.max(1,0.13*sx);
+      const wz=z+road.pos, alt=Math.floor(wz/4)&1;
+      const l=lightAt(z), fg=fogAt(z);
+      rc.fillStyle=col(alt?[26,62,36]:[21,52,31],l,fg); rc.fillRect(0,y,RW,1);
+      rc.fillStyle=col(alt?[190,40,44]:[215,215,215],l,fg);
+      rc.fillRect(cx-hw-rum,y,rum,1); rc.fillRect(cx+hw,y,rum,1);
+      rc.fillStyle=col(alt?[48,51,58]:[43,46,52],l,fg); rc.fillRect(cx-hw,y,hw*2,1);
+      rc.fillStyle=col([225,225,215],l,fg);
+      rc.fillRect(cx-hw+0.15*sx,y,ln,1); rc.fillRect(cx+hw-0.15*sx-ln,y,ln,1);
+      if(((wz%12)+12)%12<5) rc.fillRect(cx-ln/2,y,ln,1);
+    }
+    // roadside objects, far to near
+    const objs=[], SP=15;
+    for(let n=Math.floor((road.pos+1.5)/SP);n<=Math.floor((road.pos+190)/SP);n++){
+      const z=n*SP-road.pos; if(z<1.5) continue;
+      const r=hash(n);
+      objs.push({z,x:-4.7,t:"post",side:-1},{z,x:4.7,t:"post",side:1});
+      if(n%3===0) objs.push({z,x:(r<0.5?-1:1)*(8+r*7),t:r<0.22||r>0.82?"pine":"tree",r});
+      if(n%3===1&&r>0.55) objs.push({z,x:(r<0.78?-1:1)*(11+r*9),t:"pine",r});
+      if(n%5===0) objs.push({z,x:-6.3,t:"lamp"});
+      if(n%23===7) objs.push({z,x:5.8,t:"sign"});
+    }
+    objs.sort((a,b)=>b.z-a.z);
+    for(const o of objs){
+      const sx=f/o.z, gy=hz+CAM_H*sx, x=160+kf*o.z+(o.x-camX)*sx;
+      if(x<-60||x>RW+60) continue;
+      const l=lightAt(o.z), fg=fogAt(o.z);
+      if(o.t==="post"){
+        const w=Math.max(1,0.12*sx), h=Math.max(2,1.0*sx);
+        rc.fillStyle=col([210,210,205],l,fg); rc.fillRect(x-w/2,gy-h,w,h);
+        rc.fillStyle=col(o.side<0?[255,140,30]:[235,60,60],Math.max(l,0.8),fg); rc.fillRect(x-w/2,gy-h,w,Math.max(1,0.15*sx));
+      } else if(o.t==="tree"){
+        rc.fillStyle=col([70,48,32],l,fg); rc.fillRect(x-0.18*sx,gy-1.6*sx,Math.max(1,0.36*sx),1.6*sx);
+        rc.fillStyle=col(o.r>0.5?[30,82,44]:[38,92,40],l,fg); blob(x,gy-3.0*sx,1.7*sx);
+        rc.fillStyle=col([48,110,54],l,fg); blob(x-0.5*sx,gy-3.4*sx,0.8*sx);
+      } else if(o.t==="pine"){
+        const h=(5+o.r*3)*sx, hw=1.5*sx;
+        rc.fillStyle=col([60,42,30],l,fg); rc.fillRect(x-0.12*sx,gy-0.9*sx,Math.max(1,0.24*sx),0.9*sx);
+        rc.fillStyle=col([20,66,42],l,fg);
+        for(let i=0;i<h;i++){ const w=Math.max(1,hw*(i/h)*(1-0.25*((i/h*4)%1))); rc.fillRect(x-w,gy-0.8*sx-h+i,w*2,1); }
+      } else if(o.t==="lamp"){
+        const h=7*sx, w=Math.max(1,0.14*sx);
+        rc.fillStyle=col([120,125,135],l,fg); rc.fillRect(x-w/2,gy-h,w,h); rc.fillRect(x,gy-h,1.6*sx,Math.max(1,0.12*sx));
+        rc.fillStyle="rgba(255,214,130,"+(0.12*(1-fg)).toFixed(3)+")"; blob(x+1.5*sx,gy-h+0.6*sx,1.4*sx);
+        rc.fillStyle=col([255,228,160],1,fg*0.6); rc.fillRect(x+1.1*sx,gy-h+0.1*sx,Math.max(1,0.6*sx),Math.max(1,0.18*sx));
+      } else if(o.t==="sign"){
+        const h=2.3*sx, w=Math.max(1,0.08*sx), r=Math.max(1,0.45*sx);
+        rc.fillStyle=col([150,150,155],l,fg); rc.fillRect(x-w/2,gy-h,w,h);
+        rc.fillStyle=col([220,40,40],Math.max(l,0.7),fg); blob(x,gy-h-r*0.6,r);
+        rc.fillStyle=col([235,235,235],Math.max(l,0.7),fg); blob(x,gy-h-r*0.6,r*0.65);
+        if(r>=4){ rc.fillStyle="#222"; rc.fillRect(x-r*0.4,gy-h-r*0.85,r*0.25,r*0.5); rc.fillRect(x+r*0.12,gy-h-r*0.85,r*0.25,r*0.5); }
+      }
+    }
+    // hood + frame
+    rc.fillStyle="#06080c";
+    for(let i=0;i<12;i++){ const w=72+i*i*1.3; rc.fillRect(160-w,RH-12+i,w*2,1); }
+    rc.fillStyle=S.ignition?"#26303f":"#161b24"; rc.fillRect(88,RH-12,144,1);
+    rc.strokeStyle="#7d8796"; rc.lineWidth=1; rc.strokeRect(1.5,1.5,RW-3,RH-1);
+    rc.strokeStyle="#202936"; rc.strokeRect(4.5,4.5,RW-9,RH-7);
+    if(ui.paused){ rc.fillStyle="rgba(0,0,0,.45)"; rc.fillRect(0,0,RW,RH); }
+  }
+
+  /* ============================== MOCHI ==============================
+     Floating low-res mochi blob. Mood is picked from the car state
+     (gear, rpm, speed, boost, braking, events) with random variations,
+     jelly squash from acceleration, lean in curves, blinking, speech.
+     ===================================================================== */
+  const stage=$("stage");
+  const mochiCanvas=$("mochi"), bubble=$("bubble");
+  const mctx=mochiCanvas.getContext("2d");
+  const MW=48, MH=44;
+  const mimg=mctx.createImageData(MW,MH), MD=mimg.data;
+  const mask=new Uint8Array(MW*MH), mdx=new Float32Array(MW*MH), mdy=new Float32Array(MW*MH);
+  const pick=a=>a[(Math.random()*a.length)|0];
+  const MOODS={
+    sleep:  {eyes:["sleep"],mouth:["flat","small"],say:["zzz…","*snore*","5 more min…"],fx:"zzz"},
+    crank:  {eyes:["wide"],mouth:["o"],say:["!?","here we go!","wake up!"],fx:"shake"},
+    off:    {eyes:["dot"],mouth:["cat"],say:["press I~","ready?","hello!"]},
+    held:   {eyes:["><","happy"],mouth:["o"],say:["wee~","put me down!","hehe"],fx:"blush"},
+    poke:   {eyes:["happy"],mouth:["D"],say:["hi!","boop!","hehe~","that tickles!"],fx:"blush"},
+    yum:    {eyes:["happy"],mouth:["D","cat"],say:["yum!","all full~","thank you!"],fx:"sparkle blush"},
+    bov:    {eyes:["wide","><"],mouth:["o"],say:["PSSHH!","pshhh~","stu-tu-tu!"],fx:"puff"},
+    shift:  {eyes:["wink"],mouth:["cat","smile"],say:["shift!","step~","click!"]},
+    clunk:  {eyes:["happy"],mouth:["small"],say:["clunk!","in gear~","ready!"]},
+    limiter:{eyes:["dizzy","x"],mouth:["wavy"],say:["BRAP BRAP!","limiter!!","too much!"],fx:"shake sweat"},
+    turbo:  {eyes:["star"],mouth:["D"],say:["TURBO!","boost~!","spooool!","wheee!"],fx:"sparkle blush"},
+    fast:   {eyes:["wide","><"],mouth:["wavy","o"],say:["too fast!","hold me!","w-woah","speed!!"],fx:"sweat"},
+    brake:  {eyes:["><"],mouth:["o"],say:["eek!","whoa!","gently!"]},
+    hungry: {eyes:["sad"],mouth:["wavy"],say:["hungry…","fuel pls","running low"],fx:"sweat"},
+    reverse:{eyes:["dot"],mouth:["small"],say:["beep beep","backing up~","careful!"]},
+    vroom:  {eyes:["happy"],mouth:["D"],say:["VROOM!","yeah~!","go go go!"],fx:"blush"},
+    accel:  {eyes:["happy","dot"],mouth:["cat","smile"],say:["let's go!","♪","wee~"]},
+    cruise: {eyes:["dot","happy"],mouth:["smile","cat"],say:["♪","nice road~","la la la","cruisin'","so smooth"]},
+    cold:   {eyes:["dot"],mouth:["wavy"],say:["brr…","cold engine","warming up"],fx:"shiver"},
+    park:   {eyes:["dot","happy"],mouth:["cat"],say:["parked~","rest time","…"]},
+    idle:   {eyes:["dot","sleepy"],mouth:["cat","flat"],say:["waiting~","hmm?","green yet?","…"]}
+  };
+  const SPECIAL=new Set(["crank","held","poke","yum","bov","shift","clunk","limiter","turbo","fast","brake","hungry"]);
+  const mo={ x:0.83, y:0.03, t:0, mood:"", eyes:"dot", mouth:"cat", fx:"", blink:0, blinkT:2, lx:0, ly:0, lookT:2,
+    sq:0, sqV:0, lean:0, acc:0, lastV:0, evMood:null, evT:0, chatT:8, bubbleT:0, sayCool:0, floatY:0, held:false, shake:false };
+  function say(txt){
+    if(!ui.mochi) return;
+    bubble.textContent=txt; bubble.classList.add("show"); mo.bubbleT=1.7; mo.sayCool=2.2;
+  }
+  onSimEvent=ev=>{
+    if(ev.type==="bov"){ mo.evMood="bov"; mo.evT=1.3; }
+    else if(ev.type==="thump"){ mo.evMood=ev.amt<0.3?"shift":"clunk"; mo.evT=ev.amt<0.3?0.7:0.9; mo.sqV+=ev.amt*3; }
+    else if(ev.type==="lever"){ if(mo.sayCool<1.6) say("→ "+S.gear); }
+    else if(ev.type==="refuel"){ mo.evMood="yum"; mo.evT=1.4; mo.mood=""; }
+  };
+  function pickMood(){
+    const kmh=Math.abs(S.v*3.6), run=S.engine==="running";
+    if(mo.held) return "held";
+    if(!S.ignition) return mo.evT>0&&mo.evMood==="poke"?"poke":"sleep";
+    if(S.engine==="cranking") return "crank";
+    if(mo.evT>0&&mo.evMood) return mo.evMood;
+    if(S.limiter) return "limiter";
+    if(S.map>1.35&&S.pedal>0.6) return "turbo";
+    if(kmh>140) return "fast";
+    if(S.brake>0.7&&kmh>25) return "brake";
+    if(!run) return "off";
+    if(S.fuel<8) return "hungry";
+    if(S.gear==="R") return "reverse";
+    if(S.rpm>4500) return "vroom";
+    if(S.pedal>0.3) return "accel";
+    if(kmh>15) return "cruise";
+    if(S.coolant<35) return "cold";
+    if(S.gear==="P") return "park";
+    return "idle";
+  }
+  function updateMochi(dt){
+    if(dt<=0) return;
+    mo.t+=dt; mo.evT-=dt; mo.sayCool-=dt;
+    const m=pickMood();
+    if(m!==mo.mood){
+      mo.mood=m; const d=MOODS[m];
+      mo.eyes=pick(d.eyes); mo.mouth=pick(d.mouth); mo.fx=d.fx||"";
+      if(SPECIAL.has(m)||mo.sayCool<=0) say(pick(d.say));
+      mo.chatT=7+Math.random()*8;
+    }
+    mo.chatT-=dt;
+    if(mo.chatT<=0){
+      const d=MOODS[mo.mood]; mo.chatT=7+Math.random()*9;
+      mo.eyes=pick(d.eyes); mo.mouth=pick(d.mouth);
+      if(Math.random()<0.65) say(pick(d.say));
+    }
+    if(mo.bubbleT>0){ mo.bubbleT-=dt; if(mo.bubbleT<=0) bubble.classList.remove("show"); }
+    mo.blinkT-=dt; if(mo.blinkT<=0){ mo.blink=0.13; mo.blinkT=1.6+Math.random()*3.6; } mo.blink-=dt;
+    // gaze: follow the indicators, otherwise glance around
+    mo.lookT-=dt;
+    if(ui.left) mo.lx=-1; else if(ui.right) mo.lx=1;
+    else if(mo.lookT<=0){ mo.lookT=1.2+Math.random()*3; mo.lx=pick([-1,0,0,1]); mo.ly=S.gear==="R"?1:pick([0,0,-1]); }
+    // jelly squash from longitudinal g, lean from lateral g
+    if(!ui.paused){ mo.acc+=((S.v-mo.lastV)/dt-mo.acc)*Math.min(1,dt*8); }
+    mo.lastV=S.v;
+    let target=clamp(-mo.acc*0.035,-0.2,0.3);
+    if(mo.mood==="sleep") target=0.05+Math.sin(mo.t*1.6)*0.05;
+    if(mo.held) target=-0.18;
+    if(road.bumpKick){ road.bumpKick=false; mo.sqV+=0.9+Math.random(); }
+    mo.sqV+=((target-mo.sq)*110-mo.sqV*7)*dt; mo.sq=clamp(mo.sq+mo.sqV*dt,-0.35,0.45);
+    const lat=road.k*S.v*S.v+(road.changing?(road.lane?0.8:-0.8):0);
+    mo.lean+=(clamp(-lat*0.18,-1,1)-mo.lean)*Math.min(1,dt*4);
+    mo.floatY=mo.held?0:Math.round(Math.sin(mo.t*(mo.mood==="sleep"?1.1:2.3))*1.4);
+    mo.shake=mo.fx.includes("shake")||mo.fx.includes("shiver")||(S.engine==="running"&&S.rpm>5800);
+  }
+  function placeMochi(){
+    const r=stage.getBoundingClientRect(), mw=mochiCanvas.offsetWidth||r.width*0.17, mh=mw*MH/MW;
+    mochiCanvas.style.left=(mo.x*r.width-mw/2)+"px";
+    mochiCanvas.style.top=(mo.y*r.height)+"px";
+    const leftSide=mo.x>0.35;
+    bubble.classList.toggle("bl",leftSide); bubble.classList.toggle("br",!leftSide);
+    bubble.style.left=(mo.x*r.width+(leftSide?-mw*0.36:mw*0.36))+"px";
+    bubble.style.top=(mo.y*r.height+mh*0.42)+"px";
+  }
+  function drawMochi(){
+    if(!ui.mochi) return;
+    placeMochi();
+    const t=mo.t, sq=mo.sq, sxs=1+sq, sys=1-sq*0.85;
+    const w=15*sxs, h=12*sys;
+    const jit=mo.shake?((((t*30)|0)%2)?1:-1):0;
+    const cx=24+jit, by=37+mo.floatY, cy=by-h, lean=mo.lean*3;
+    const cold=mo.mood==="cold";
+    const BODY=cold?[236,244,255]:[255,243,246], SHADE=cold?[206,220,240]:[241,205,216], LINE=[74,47,61];
+    MD.fill(0); mask.fill(0);
+    // ground shadow (shrinks while floating up)
+    const shW=w*(0.78-mo.floatY*0.03);
+    for(let x=0;x<MW;x++) if(Math.abs(x+0.5-24)<shW){ for(const y of [41,42]){ const i=(y*MW+x)*4; MD[i+3]=y===41?70:40; } }
+    for(let y=0;y<MH;y++) for(let x=0;x<MW;x++){
+      let dy=(y+0.5-cy)/h; const dx=(x+0.5-cx-lean*(by-(y+0.5))/h)/w;
+      if(dy>0) dy*=1.18;
+      if(dx*dx+dy*dy<=1){ const j=y*MW+x; mask[j]=1; mdx[j]=dx; mdy[j]=dy; }
+    }
+    for(let y=0;y<MH;y++) for(let x=0;x<MW;x++){
+      const j=y*MW+x; if(!mask[j]) continue;
+      const edge=x===0||y===0||x===MW-1||y===MH-1||!mask[j-1]||!mask[j+1]||!mask[j-MW]||!mask[j+MW];
+      let c=BODY;
+      if(edge) c=LINE;
+      else if(mdx[j]*0.35+mdy[j]*0.9>0.5) c=SHADE;
+      else if((mdx[j]+0.45)**2+(mdy[j]+0.5)**2<0.03) c=[255,255,255];
+      const i=j*4; MD[i]=c[0]; MD[i+1]=c[1]; MD[i+2]=c[2]; MD[i+3]=255;
+    }
+    mctx.putImageData(mimg,0,0);
+    const E="#2b1b25", PINK="#e0607a";
+    const px=(x,y,c)=>{ mctx.fillStyle=c; mctx.fillRect(Math.round(x),Math.round(y),1,1); };
+    const rr=(x,y,ww,hh,c)=>{ mctx.fillStyle=c; mctx.fillRect(Math.round(x),Math.round(y),ww,hh); };
+    const fxAt=y=>cx+lean*(by-y)/h;
+    const ey=Math.round(cy-1.5*sys)+mo.ly, my=Math.round(cy+3*sys);
+    const exL=Math.round(fxAt(ey)-6*sxs)+mo.lx, exR=Math.round(fxAt(ey)+6*sxs)+mo.lx, mx=Math.round(fxAt(my))+mo.lx;
+    // cheeks
+    const blush=mo.fx.includes("blush")?"#ff86a6":"#ffb8c9";
+    rr(Math.round(fxAt(my)-11*sxs),my-1,3,2,blush); rr(Math.round(fxAt(my)+9*sxs),my-1,3,2,blush);
+    const noBlink=new Set(["happy","closed","sleep","><","star","dizzy","x","wink"]);
+    function eye(x,y,type,left){
+      if(mo.blink>0&&!noBlink.has(type)) type="closed";
+      if(type==="sleepy") type=((t*0.5)|0)%3===0?"closed":"dot";
+      switch(type){
+        case "dot": rr(x-1,y-1,2,3,E); px(x-1,y-1,"#fff"); break;
+        case "closed": rr(x-1,y,3,1,E); break;
+        case "happy": px(x-1,y,E); px(x,y-1,E); px(x+1,y,E); break;
+        case "sleep": px(x-1,y,E); px(x,y+1,E); px(x+1,y,E); break;
+        case "wide": rr(x-1,y-2,3,4,E); px(x-1,y-2,"#fff"); break;
+        case "star": { const Y=((t*6)|0)%2?"#ffcf3a":"#ffe27a"; rr(x,y-2,1,5,Y); rr(x-2,y,5,1,Y); px(x,y,"#fff"); break; }
+        case "dizzy": rr(x-1,y-1,3,1,E); rr(x-1,y+1,3,1,E); px(x-1,y,E); px(x+1,y,E); if(((t*8)|0)%2) px(x,y,E); break;
+        case "x": px(x-1,y-1,E); px(x+1,y-1,E); px(x,y,E); px(x-1,y+1,E); px(x+1,y+1,E); break;
+        case "><": if(left){ px(x-1,y-1,E); px(x,y,E); px(x-1,y+1,E); } else { px(x+1,y-1,E); px(x,y,E); px(x+1,y+1,E); } break;
+        case "sad": rr(x-1,y-1,2,3,E); px(x-1,y-1,"#fff"); if(left){ px(x-2,y-3,E); px(x-1,y-4,E); } else { px(x+1,y-3,E); px(x,y-4,E); } break;
+        case "wink": if(left){ rr(x-1,y-1,2,3,E); px(x-1,y-1,"#fff"); } else { px(x-1,y,E); px(x,y-1,E); px(x+1,y,E); } break;
+      }
+    }
+    eye(exL,ey,mo.eyes,true); eye(exR,ey,mo.eyes,false);
+    switch(mo.mouth){
+      case "cat": px(mx-2,my,E); px(mx-1,my+1,E); px(mx,my,E); px(mx+1,my+1,E); px(mx+2,my,E); break;
+      case "smile": px(mx-2,my,E); rr(mx-1,my+1,3,1,E); px(mx+2,my,E); break;
+      case "o": rr(mx-1,my,3,3,E); px(mx,my+1,PINK); break;
+      case "small": rr(mx,my,2,2,E); break;
+      case "D": rr(mx-2,my,5,3,E); rr(mx-1,my+1,3,1,PINK); break;
+      case "flat": rr(mx-1,my+1,3,1,E); break;
+      case "wavy": px(mx-2,my+1,E); px(mx-1,my,E); px(mx,my+1,E); px(mx+1,my,E); px(mx+2,my+1,E); break;
+    }
+    // effects
+    const fx=mo.fx;
+    if(fx.includes("zzz")) for(let i=0;i<3;i++){
+      const ph=(t*0.45+i/3)%1, zx=Math.round(cx+w-3+ph*8), zy=Math.round(cy-h-1-ph*12);
+      mctx.globalAlpha=1-ph; rr(zx,zy,3,1,"#a9b8ff"); px(zx+1,zy+1,"#a9b8ff"); rr(zx,zy+2,3,1,"#a9b8ff"); mctx.globalAlpha=1;
+    }
+    if(fx.includes("sweat")){ const sx=Math.round(cx+w-4), sy=Math.round(cy-h+3)+(((t*2)%1)*3|0); px(sx,sy,"#bfe6ff"); rr(sx-1,sy+1,3,2,"#6cc0ff"); px(sx-1,sy+1,"#fff"); }
+    if(fx.includes("sparkle")) for(let i=0;i<3;i++){
+      if(((t*7+i)|0)%2) continue;
+      const a=t*2.2+i*2.1, sx=Math.round(cx+Math.cos(a)*(w+3)), sy=Math.round(cy-2+Math.sin(a)*(h+2));
+      rr(sx,sy-1,1,3,"#ffd94a"); rr(sx-1,sy,3,1,"#ffd94a");
+    }
+    if(fx.includes("puff")){
+      const age=clamp(1.3-mo.evT,0,1.3);
+      mctx.globalAlpha=clamp(1-age/1.3,0,1); mctx.fillStyle="#d7dde6";
+      for(let i=0;i<3;i++){ const r=1+i+age*2, bx=cx+w-2+age*7+i*3, byy=cy-h+1-age*6-i*2;
+        for(let k=-Math.round(r);k<=Math.round(r);k++){ const ww=Math.sqrt(Math.max(0,r*r-k*k)); mctx.fillRect(Math.round(bx-ww),Math.round(byy+k),Math.max(1,Math.round(ww*2)),1); } }
+      mctx.globalAlpha=1;
+    }
+    if(Math.abs(S.v*3.6)>90 && S.ignition){
+      mctx.fillStyle="rgba(255,255,255,.75)";
+      for(let i=0;i<4;i++){ const yy=Math.round(cy-6+i*4), len=4+(i*7)%3, xx=Math.round(cx-w-4-((t*90+i*11)%14)); mctx.fillRect(xx,yy,len,1); }
+    }
+  }
+  // drag to move, tap to poke
+  let drag=null;
+  mochiCanvas.addEventListener("pointerdown",e=>{
+    const r=stage.getBoundingClientRect();
+    drag={sx:e.clientX,sy:e.clientY,ox:mo.x,oy:mo.y,w:r.width,h:r.height,moved:false};
+    mochiCanvas.setPointerCapture(e.pointerId); mochiCanvas.classList.add("drag");
+  });
+  mochiCanvas.addEventListener("pointermove",e=>{
+    if(!drag) return;
+    if(Math.abs(e.clientX-drag.sx)+Math.abs(e.clientY-drag.sy)>4){ drag.moved=true; mo.held=true; }
+    if(!drag.moved) return;
+    mo.x=clamp(drag.ox+(e.clientX-drag.sx)/drag.w,0.08,0.92);
+    mo.y=clamp(drag.oy+(e.clientY-drag.sy)/drag.h,-0.02,0.88);
+  });
+  const endDrag=()=>{
+    if(!drag) return;
+    if(!drag.moved){ mo.sqV+=3.2; mo.evMood="poke"; mo.evT=0.9; mo.mood=""; }
+    else mo.sqV+=2;
+    drag=null; mo.held=false; mochiCanvas.classList.remove("drag");
+  };
+  mochiCanvas.addEventListener("pointerup",endDrag);
+  mochiCanvas.addEventListener("pointercancel",endDrag);
+
+  /* ============================== MENU ============================== */
+  ui.volume=0.8; ui.road=true; ui.mochi=true;
+  const hintEl=$("hint");
+  $("menu").addEventListener("mousedown",e=>{ if(e.target.closest("button")) e.preventDefault(); });
+  const volIn=$("vol");
+  volIn.addEventListener("input",()=>{ ui.volume=volIn.value/100; });
+  volIn.addEventListener("change",()=>volIn.blur());
+  function pulse(btn,label){
+    if(!btn.dataset.label) btn.dataset.label=btn.textContent;
+    btn.textContent=label; btn.classList.add("ok"); btn.classList.remove("warn");
+    clearTimeout(btn._t); btn._t=setTimeout(()=>{ btn.textContent=btn.dataset.label; btn.classList.remove("ok"); },900);
+  }
+  const fuelBtn=$("btnFuel"), oilBtn=$("btnOil");
+  fuelBtn.addEventListener("click",()=>{ S.fuel=100; pulse(fuelBtn,"FUEL FULL"); onSimEvent({type:"refuel"}); });
+  oilBtn.addEventListener("click",()=>{ S.oilLevel=100; pulse(oilBtn,"OIL FULL"); onSimEvent({type:"refuel"}); });
+  $("btnTrip").addEventListener("click",()=>{ S.trip=0; pulse($("btnTrip"),"TRIP 0.0"); });
+  function toggle(id,fn){ const b=$(id); b.addEventListener("click",()=>{ const on=!b.classList.contains("on"); b.classList.toggle("on",on); fn(on); }); return b; }
+  toggle("btnRoad",on=>{ ui.road=on; stage.classList.toggle("noroad",!on); });
+  toggle("btnMochi",on=>{ ui.mochi=on; mochiCanvas.classList.toggle("hidden",!on); bubble.classList.toggle("hidden",!on); });
+  const pauseBtn=toggle("btnPause",on=>{ ui.paused=on; });
+  toggle("btnKeys",on=>hintEl.classList.toggle("hidden",!on));
+  const fullBtn=$("btnFull");
+  fullBtn.addEventListener("click",()=>{ if(document.fullscreenElement) document.exitFullscreen(); else if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen(); });
+  document.addEventListener("fullscreenchange",()=>fullBtn.classList.toggle("on",!!document.fullscreenElement));
+  function syncMenu(){
+    pauseBtn.classList.toggle("on",ui.paused);
+    if(!fuelBtn.classList.contains("ok")) fuelBtn.classList.toggle("warn",S.fuel<15);
+    if(!oilBtn.classList.contains("ok")) oilBtn.classList.toggle("warn",S.oilLevel<20);
+  }
+
+  /* ============================== DRAW ============================== */
+  const font=(size,weight="normal")=>`${weight} ${size}px Consolas, "Courier New", monospace`;
+  function text(str,x,y,size=8,color=C.white,align="left",weight="normal"){
+    ctx.font=font(size,weight); ctx.fillStyle=color; ctx.textAlign=align; ctx.textBaseline="middle";
+    ctx.fillText(String(str),x,y);
+  }
+  function line(x1,y1,x2,y2,color=C.dim,w=1){ ctx.strokeStyle=color; ctx.lineWidth=w; ctx.beginPath(); ctx.moveTo(x1,y1); ctx.lineTo(x2,y2); ctx.stroke(); }
+  function rect(x,y,w,h,color){ ctx.fillStyle=color; ctx.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h)); }
+  function ring(cx,cy,r,start,end,color,width=1){ ctx.beginPath(); ctx.arc(cx,cy,r,start,end); ctx.strokeStyle=color; ctx.lineWidth=width; ctx.stroke(); }
+  function drawTurn(x,y,left,on){
+    ctx.fillStyle=on?C.green:"#26342b";
+    ctx.beginPath();
+    if(left){ ctx.moveTo(x-9,y);ctx.lineTo(x,y-7);ctx.lineTo(x,y-3);ctx.lineTo(x+8,y-3);ctx.lineTo(x+8,y+3);ctx.lineTo(x,y+3);ctx.lineTo(x,y+7); }
+    else { ctx.moveTo(x+9,y);ctx.lineTo(x,y-7);ctx.lineTo(x,y-3);ctx.lineTo(x-8,y-3);ctx.lineTo(x-8,y+3);ctx.lineTo(x,y+3);ctx.lineTo(x,y+7); }
+    ctx.closePath(); ctx.fill();
+  }
+  function drawVerticalGauge(x,top,labelTop,labelBottom,value,max,color,segments=8){
+    text(labelTop,x+1,top-6,8,C.white,"center");
+    text(labelBottom,x+1,top+segments*6+6,8,C.white,"center");
+    for(let i=0;i<segments;i++){
+      const active=i<Math.round(value/max*segments);
+      rect(x-3,top+i*6,7,4,active?color:"#303844");
+    }
+  }
+  const SPEED_MAX=220;
+  function drawSpeedometer(kmh){
+    const cx=160, cy=91, r=82, start=Math.PI;
+    ring(cx,cy,r,start,0,"#d6d9df",1.3);
+    for(let i=0;i<=22;i++){
+      const a=start-(i/22)*Math.PI, major=i%2===0, inner=r-(major?9:4);
+      line(cx+Math.cos(a)*inner,cy-Math.sin(a)*inner,cx+Math.cos(a)*(r+1),cy-Math.sin(a)*(r+1),"#c8cdd5",major?1.2:.7);
+      if(major) text(i*10,cx+Math.cos(a)*(r-20),cy-Math.sin(a)*(r-20),8,C.white,"center");
+    }
+    text("km/h",160,47,9,C.muted,"center");
+    const v=clamp(kmh/SPEED_MAX,0,1), a=start-v*Math.PI;
+    line(cx,cy,cx+Math.cos(a)*66,cy-Math.sin(a)*66,C.red,2);
+    rect(cx-3,cy-3,6,6,C.white);
+    text(Math.round(Math.abs(S.v*3.6)),160,111,29,C.white,"center","bold");
+    text("km/h",160,132,8,C.muted,"center");
+  }
+  // little RPM gate: ramped bar segments, 500 rpm each, redline 6500
+  function drawRpmGate(rpm,blinkOn){
+    const x0=38, base=23;
+    for(let i=0;i<14;i++){
+      const h=Math.round(3+i*0.45);
+      const lit=rpm>i*500+250;
+      let col=i>=13?C.red:i>=12?C.amber:"#cbd2dc";
+      if(S.limiter && i>=12 && !blinkOn) col=C.off;
+      rect(x0+i*5,base-h,4,h,lit?col:C.off);
+    }
+    text(String(ui.rpmNum),x0,31,9,rpm>6300?C.red:C.white,"left","bold");
+    text("RPM",x0+26,31,7,C.muted);
+  }
+  function drawBoost(map,sweep){
+    const x0=212, base=23, g=sweep!=null?sweep*1.4:map-1;
+    for(let i=0;i<14;i++){
+      const h=Math.round(3+i*0.45);
+      const lit=g>=(i+0.5)*0.1;
+      rect(x0+i*5,base-h,4,h,lit?(i>=10?C.amber:C.blue):C.off);
+    }
+    const val=sweep!=null?0:map-1;
+    text((val>=0?"+":"")+val.toFixed(2),224,31,9,C.white,"left","bold");
+    text("BOOST",284,31,7,C.muted,"right");
+  }
+  function lamp(x,y,label,on,color){
+    ctx.strokeStyle=on?color:"#252c36"; ctx.lineWidth=1; ctx.strokeRect(x+.5,y+.5,28,10);
+    if(on) rect(x+1,y+1,27,9,color+"33");
+    text(label,x+15,y+6,7,on?color:"#2c333e","center","bold");
+  }
+  function draw(now){
+    ctx.fillStyle=C.bg; ctx.fillRect(0,0,320,198);
+    ctx.strokeStyle="#7d8796"; ctx.lineWidth=1; ctx.strokeRect(1.5,1.5,317,195);
+    ctx.strokeStyle="#202936"; ctx.strokeRect(4.5,4.5,311,189);
+    drawTurn(25,14,true,ui.left&&ui.blink);
+    drawTurn(295,14,false,ui.right&&ui.blink);
+    drawVerticalGauge(12,43,"H","C",clamp((S.coolant-50)/70,0,1)*8,8,S.coolant>108?C.red:C.blue,8);
+    drawVerticalGauge(308,43,"F","E",S.fuel,100,S.fuel<15?C.red:"#cbd2dc",8);
+    text("♨",20,83,10,C.muted,"center");
+    text("⛽",300,83,10,C.muted,"center");
+
+    // ignition-on needle sweep (self test)
+    let sweep=null;
+    if(S.sweepT<1.5){
+      const t=S.sweepT, e=u=>1-Math.pow(1-clamp(u,0,1),3);
+      sweep=t<0.6?e(t/0.6):t<0.8?1:1-e((t-0.8)/0.7);
+    }
+    const blinkOn=(now%160)<80;
+    drawSpeedometer(sweep!=null?sweep*SPEED_MAX:ui.dispSpeed);
+    drawRpmGate(sweep!=null?sweep*7000:ui.dispRpm,blinkOn);
+    drawBoost(S.map,sweep);
+
+    // warning lamps (bulb check while ignition on / engine off)
+    const ign=S.ignition, run=S.engine==="running";
+    lamp(26,99,"CHECK",ign&&(!run||S.oilLevel<5),C.amber);
+    lamp(58,99,"OIL",ign&&S.oilPressure<0.3,C.red);
+    lamp(26,113,"BATT",ign&&S.voltage<13,C.red);
+    lamp(58,113,"BRAKE",ign&&(S.handbrake||S.gear==="P"&&!run),C.red);
+    lamp(26,127,"TURBO",ign&&run&&S.map>1.02,C.blue);
+    lamp(58,127,"ECO",ign&&run&&S.pedal<0.35&&S.pedal>0.02&&S.lock,C.green);
+
+    // transmission info
+    const kmh=S.v*3.6;
+    const ratio=S.gear==="R"?S.P.rRev:S.ratio;
+    text("RATIO "+ratio.toFixed(2),202,104,7,C.white);
+    const tcTxt=!run||!"DSLR".includes(S.gear)?"TC  --":S.lock?"TC  LOCK":"TC  SLIP";
+    text(tcTxt,202,114,7,S.lock?C.green:C.muted);
+    let mode="";
+    if(S.gear==="P"||S.gear==="N") mode=S.gear==="P"?"PARK":"NEUTRAL";
+    else if(S.gear==="R") mode="REVERSE";
+    else if(S.manual) mode="MANUAL "+(S.vgear+1);
+    else if(S.gear==="S") mode="SPORT  "+(S.vgear+1);
+    else if(S.gear==="L") mode="LOW RANGE";
+    else mode=S.dstep?"D-STEP "+(S.vgear+1):"CVT AUTO";
+    text(mode,202,124,7,C.white);
+    if(S.msgT>0) text(S.msg,202,135,7,C.amber,"left","bold");
+    else if(S.manual && S.rpm>6000 && S.vgear<6 && blinkOn) text("▲ SHIFT UP",202,135,7,C.green,"left","bold");
+    else if(S.limiter) text("REV LIMIT",202,135,7,C.red,"left","bold");
+
+    // lower info rows
+    line(8,150,312,150,"#333b47",1);
+    text("OIL P",12,162,8,C.white);
+    text(S.oilPressure.toFixed(1)+" bar",79,162,9,C.white);
+    text("C.TEMP",205,162,8,C.white);
+    text(Math.round(S.coolant)+"°C",305,162,9,C.white,"right");
+    text("OIL T",12,179,8,C.white);
+    text(Math.round(S.oilTemp)+"°C",61,179,9,C.white);
+    text("LEVEL",112,179,7,C.muted);
+    text(Math.round(S.oilLevel)+"%",158,179,9,S.oilLevel<20?C.red:C.white);
+    text("▣ VOLT",205,179,8,C.white);
+    text(S.voltage.toFixed(1)+"V",305,179,9,S.voltage<11.5?C.amber:C.white,"right");
+
+    // gear box
+    rect(141,139,38,27,C.bg);
+    ctx.strokeStyle=S.shiftFlash>0?C.white:"#687486"; ctx.lineWidth=1; ctx.strokeRect(142.5,140.5,35,24);
+    let gl=S.gear;
+    if(S.manual) gl="M"+(S.vgear+1); else if(S.gear==="S") gl="S"+(S.vgear+1);
+    text(gl,160,152,gl.length>1?16:18,C.white,"center","bold");
+    text("CVT",160,171,10,C.white,"center","bold");
+
+    line(8,185,312,185,"#586170",1);
+    const d=new Date();
+    text(String(d.getHours()).padStart(2,"0")+":"+String(d.getMinutes()).padStart(2,"0"),12,191,10,C.white);
+    text("TRIP "+S.trip.toFixed(1)+" km",160,191,7,C.muted,"center");
+    text(String(Math.floor(S.odometer)).padStart(6,"0")+" km",265,191,10,C.white,"right");
+
+    if(!S.ignition){
+      rect(0,0,320,198,"rgba(0,0,0,.66)");
+      text("IGNITION OFF",160,96,14,C.white,"center","bold");
+      text("PRESS I TO START",160,112,7,C.muted,"center");
+    }
+    if(ui.paused) text("PAUSED",160,26,8,C.amber,"center","bold");
+    void kmh;
+  }
+
+  /* ============================== INPUT ============================== */
+  const keys=new Set();
+  const gearKeys={p:"P",r:"R",n:"N",d:"D",s:"S",l:"L"};
+  window.addEventListener("keydown",e=>{
+    const k=e.key.toLowerCase();
+    if(["arrowup","arrowdown","arrowleft","arrowright"," "].includes(k)) e.preventDefault();
+    if(["arrowup","arrowdown"," "].includes(k)) keys.add(k);
+    if(k==="shift") keys.add("shift");
+    if(e.repeat) return;
+    if(k==="arrowleft"){ ui.left=!ui.left; if(ui.left) ui.right=false; }
+    if(k==="arrowright"){ ui.right=!ui.right; if(ui.right) ui.left=false; }
+    if(gearKeys[k]) sim.selectGear(gearKeys[k]);
+    if(k==="+"||k==="="||e.code==="NumpadAdd") sim.manualShift(1);
+    if(k==="-"||k==="_"||e.code==="NumpadSubtract") sim.manualShift(-1);
+    if(k==="i") sim.ignitionPress();
+    if(k==="escape") ui.paused=!ui.paused;
+    if(k===" ") S.handbrake=true;
+  },{passive:false});
+  window.addEventListener("keyup",e=>{
+    const k=e.key.toLowerCase(); keys.delete(k);
+    if(k===" ") S.handbrake=false;
+  });
+  window.addEventListener("blur",()=>{ keys.clear(); S.pedal=0; S.brake=0; S.handbrake=false; });
+
+  /* ============================== LOOP ============================== */
+  function frame(now){
+    const dt=Math.min((now-ui.last)/1000,0.05); ui.last=now;
+    if(!ui.paused){
+      const target=keys.has("arrowup")&&S.ignition?(keys.has("shift")?0.45:1):0;
+      S.pedal=target>S.pedal?Math.min(target,S.pedal+dt*2.4):Math.max(target,S.pedal-dt*4.5);
+      S.brake=keys.has("arrowdown")?Math.min(1,S.brake+dt*2.5):Math.max(0,S.brake-dt*4);
+      ui.blinkClock+=dt;
+      if(ui.blinkClock>=0.4){
+        ui.blinkClock=0; ui.blink=!ui.blink;
+        if((ui.left||ui.right)&&S.ignition) audio.event({type:"tick",amt:ui.blink?0.5:0.32});
+      }
+      const n=Math.max(1,Math.ceil(dt/0.004));
+      for(let i=0;i<n;i++) sim.step(dt/n);
+      S.sweepT+=dt;
+      ui.dispSpeed=lerp(ui.dispSpeed,Math.abs(S.v*3.6),clamp(dt*7,0,1));
+      ui.dispRpm=lerp(ui.dispRpm,S.rpm,clamp(dt*14,0,1));
+      ui.rpmNumT-=dt;
+      if(ui.rpmNumT<=0){ ui.rpmNumT=0.1; ui.rpmNum=Math.round(S.rpm/10)*10; }
+      updateRoad(dt);
+    }
+    if(audio.on){
+      const run=S.engine==="running";
+      audio.send({
+        rpm:S.rpm, load:clamp(S.comb/S.P.maxTq+(S.blipT>0?0.45:0),0,1.2), thr:S.thr,
+        turbo:S.turbo, boost:Math.max(0,S.map-1), starter:S.engine==="cranking"?1:0,
+        speed:Math.abs(S.v*3.6), cut:S.cut?1:0, running:run?1:0,
+        pop:(S.gear==="S"||S.manual)?S.popWin:0, vol:ui.paused?0:ui.volume
+      });
+    }
+    draw(now);
+    drawRoad(now);
+    updateMochi(dt);
+    drawMochi();
+    syncMenu();
+    requestAnimationFrame(frame);
+  }
+  draw(performance.now());
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
