@@ -288,7 +288,7 @@ class EngineSynth {
     this.tPh=0;this.sPh=0;this.wPh=0;this.thPh=0;this.sqPh=0;this.zPh=0;this.pPh=0;this.rvPh=0;this.rvT=0.9;this.tf=1000;this.wf=600;this.vib=0;
     this.bov=0;this.bovAmt=0;this.bovAge=1;
     this.thump=0;this.thumpAmt=0;this.thumpF=48;this.click=0;this.popEnv=0;
-    this.pump=0;this.zing=0;this.creak=0;this.crash=0;this.glass=0;this.drop=0;this.thunder=0;this.crq=[];this.crk=0;this.bq=[];this.bang=0;this.bAge=1;this.bLP=0;this.bangF=new SVF();this.bangF.set(1100,0.45,sr);this.crkHP=0;this.crkLP=0;this.thF=new SVF();this.thF.set(110,0.7,sr);
+    this.pump=0;this.zing=0;this.creak=0;this.crash=0;this.glass=0;this.drop=0;this.thunder=0;this.crq=[];this.crk=0;this.bq=[];this.bang=0;this.bAge=1;this.bLP=0;this.bR1=new SVF();this.bR1.set(170,2.6,sr);this.bR2=new SVF();this.bR2.set(620,3.2,sr);this.bR3=new SVF();this.bR3.set(2100,2.2,sr);this.crkHP=0;this.crkLP=0;this.thF=new SVF();this.thF.set(110,0.7,sr);
     this.squeal=false;this.sqF=3300;this.brakePrev=0;
     this.q=[];
     this.seed=22222;this.ctr=0;
@@ -485,13 +485,14 @@ class EngineSynth {
       let pop=0;
       if(this.bq.length){ for(let k=this.bq.length-1;k>=0;k--){ const c=this.bq[k]; if(c[0]--<=0){ this.bang=Math.max(this.bang,c[1]); this.bAge=0; this.bq.splice(k,1); } } }
       if(this.bang>0.002){
-        // crack: bright noise with an instant attack; body: a short low punch that drops in pitch
+        // a pop is a ~1.5 ms N-shaped pressure spike (like a balloon) that rings briefly in the pipe and tail
         this.bAge+=dt;
-        const crack=this.bangF.run(nz)*1.5+nz*0.35*Math.exp(-this.bAge/0.004);
-        this.bLP+=(nz-this.bLP)*0.08;
-        const body=Math.sin(6.283185*(95+140*Math.exp(-this.bAge/0.012))*this.bAge)*Math.exp(-this.bAge/0.03)*1.1+this.bLP*1.4;
-        pop+=(crack*Math.exp(-this.bAge/0.018)+body)*this.bang*0.62;
-        if(this.bAge>0.12) this.bang=0;
+        const T=0.0016, ag=this.bAge, nw=ag<T?(1-2*ag/T):0;
+        const kick=nw*this.bang;
+        const ring=this.bR1.run(kick)*2.6+this.bR2.run(kick)*2.2+this.bR3.run(kick)*1.3;
+        const crack=ag<0.006?nz*Math.exp(-ag/0.0018)*0.55*this.bang:0;
+        pop+=(kick*0.9+ring+crack)*0.75;
+        if(ag>0.09) this.bang=0;
       }
       if(this.crq.length){ for(let k=this.crq.length-1;k>=0;k--){ const c=this.crq[k]; if(c[0]--<=0){ this.crk=Math.max(this.crk,c[1]); this.crq.splice(k,1); } } }
       if(this.crk>0.001){

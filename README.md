@@ -81,7 +81,7 @@ There are no audio samples; everything is generated in an AudioWorklet:
 
 - **Engine:** a sporty turbo four with a straight-through sport exhaust. Firing pulses come through unequal header runners, then header, mid-pipe and tail-pipe resonances, a bright muffler and a cabin drone. Pulse turbulence adds the rasp, the intake hardens past about 5,200 rpm, and idle has a slight lope that is rougher when cold.
 - **Start sequence:** key-on relay click and fuel pump prime, the starter solenoid, ring-gear whine loaded by each compression stroke, coughs as it catches, the starter pinion spinning out, then the flare.
-- **Turbo:** whistle, compressor whoosh, wastegate chatter at full boost, and a blow-off valve with a short flutter. Lifting off hard from high rpm gives JDM-style overrun bangs: a sharp crack with a punchy low thump, sometimes doubled or tripled, then a short crackle (more in S and manual and on the limiter).
+- **Turbo:** whistle, compressor whoosh, wastegate chatter at full boost, and a blow-off valve with a short flutter. Lifting off hard from high rpm gives JDM-style overrun pops: a very short pressure spike that rings briefly in the exhaust (like a balloon pop), sometimes doubled or tripled, then a short crackle (more in S and manual and on the limiter).
 - **Car:** brake pad hiss and an occasional squeal at low speed, a body settle when you stop, the handbrake ratchet, gear lever detents through the gate, the turn-signal relay tick and tock, a reverse buzzer, CVT whine, and tyre, wind and road-joint thumps.
 - **World:** rain on the roof, thunder, echo in tunnels and a short cabin reverb.
 
