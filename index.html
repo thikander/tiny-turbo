@@ -288,7 +288,7 @@ class EngineSynth {
     this.tPh=0;this.sPh=0;this.wPh=0;this.thPh=0;this.sqPh=0;this.zPh=0;this.pPh=0;this.rvPh=0;this.rvT=0.9;this.tf=1000;this.wf=600;this.vib=0;
     this.bov=0;this.bovAmt=0;this.bovAge=1;
     this.thump=0;this.thumpAmt=0;this.thumpF=48;this.click=0;this.popEnv=0;
-    this.pump=0;this.zing=0;this.creak=0;this.crash=0;this.glass=0;this.drop=0;this.thunder=0;this.crq=[];this.crk=0;this.crkHP=0;this.crkLP=0;this.thF=new SVF();this.thF.set(110,0.7,sr);
+    this.pump=0;this.zing=0;this.creak=0;this.crash=0;this.glass=0;this.drop=0;this.thunder=0;this.crq=[];this.crk=0;this.bq=[];this.bang=0;this.bAge=1;this.bLP=0;this.bangF=new SVF();this.bangF.set(1100,0.45,sr);this.crkHP=0;this.crkLP=0;this.thF=new SVF();this.thF.set(110,0.7,sr);
     this.squeal=false;this.sqF=3300;this.brakePrev=0;
     this.q=[];
     this.seed=22222;this.ctr=0;
@@ -314,10 +314,12 @@ class EngineSynth {
       this.sched(n*0.055,0,0.8,1500,0.005); this.sched(n*0.055,1,0.1,60,0.05); }
     else if(T==='tick'){ this.fireNow(0,e.amt,e.on?3100:1850,e.on?0.003:0.0045); }
     else if(T==='thump'){ this.fireNow(1,e.amt,48,0.075); }
-    else if(T==='pop'){ // overrun crackle: a quick irregular burst of sharp snaps, plus a small muffled thud
-      const j=this.pi; this.pi=(this.pi+1)%this.NP; this.pa[j]=0.25+0.25*e.amt; this.pt[j]=0; this.ptau[j]=0.0005;
-      const n=2+((this.rnd()*5)|0); let t=0;
-      for(let i=0;i<n;i++){ t+=0.008+this.rnd()*0.03; this.crq.push([Math.round(t*this.sr),(0.35+this.rnd()*0.65)*(1-i/(n+1))*(0.6+0.4*e.amt)]); } }
+    else if(T==='pop'){ // JDM overrun bang: 1-3 sharp broadband cracks with a punchy low body, then a crackle tail
+      const a=0.65+0.35*e.amt, nb=this.rnd()<0.45?1:this.rnd()<0.6?2:3; let t=0;
+      for(let i=0;i<nb;i++){ this.bq.push([Math.round(t*this.sr),a*(1-i*0.22)]); t+=0.045+this.rnd()*0.05; }
+      const j=this.pi; this.pi=(this.pi+1)%this.NP; this.pa[j]=0.5*a; this.pt[j]=0; this.ptau[j]=0.0004;
+      const n=2+((this.rnd()*4)|0);
+      for(let i=0;i<n;i++){ t+=0.012+this.rnd()*0.035; this.crq.push([Math.round(t*this.sr),(0.3+this.rnd()*0.5)*(1-i/(n+1))*a]); } }
     else if(T==='solenoid'){ this.fireNow(0,1.0,1650,0.007); this.sched(0,1,0.32,85,0.04); }
     else if(T==='catch'){ this.zing=1; this.zPh=0; }
     else if(T==='shutoff'){ this.sched(0.05,1,0.55,26,0.11); this.sched(0.26,1,0.25,32,0.08); }
@@ -481,11 +483,21 @@ class EngineSynth {
       if(this.thunder>0.001){ this.thF.run(nz); ex+=this.thF.lp*this.thunder*2.4*(0.55+0.45*Math.sin(this.ctr*0.00031)*Math.sin(this.ctr*0.00007)); this.thunder*=Math.exp(-dt/1.7); }
       // overrun crackle burst
       let pop=0;
+      if(this.bq.length){ for(let k=this.bq.length-1;k>=0;k--){ const c=this.bq[k]; if(c[0]--<=0){ this.bang=Math.max(this.bang,c[1]); this.bAge=0; this.bq.splice(k,1); } } }
+      if(this.bang>0.002){
+        // crack: bright noise with an instant attack; body: a short low punch that drops in pitch
+        this.bAge+=dt;
+        const crack=this.bangF.run(nz)*1.5+nz*0.35*Math.exp(-this.bAge/0.004);
+        this.bLP+=(nz-this.bLP)*0.08;
+        const body=Math.sin(6.283185*(95+140*Math.exp(-this.bAge/0.012))*this.bAge)*Math.exp(-this.bAge/0.03)*1.1+this.bLP*1.4;
+        pop+=(crack*Math.exp(-this.bAge/0.018)+body)*this.bang*0.62;
+        if(this.bAge>0.12) this.bang=0;
+      }
       if(this.crq.length){ for(let k=this.crq.length-1;k>=0;k--){ const c=this.crq[k]; if(c[0]--<=0){ this.crk=Math.max(this.crk,c[1]); this.crq.splice(k,1); } } }
       if(this.crk>0.001){
         // each snap: a few ms of bright noise (high-passed), slightly darkened by the muffler
         const x=nz*this.crk; this.crkHP+=(x-this.crkHP)*0.35; const hp=x-this.crkHP; this.crkLP+=(hp-this.crkLP)*0.55;
-        pop=(this.crkLP*0.8+this.popF.run(x)*0.5)*0.55; this.crk*=0.9965;
+        pop+=(this.crkLP*0.8+this.popF.run(x)*0.5)*0.6; this.crk*=0.9965;
         if(this.crk<0.02) this.crk=0;
       }
 
@@ -2966,7 +2978,7 @@ registerProcessor('engine-synth', EngineProc);`;
       // overrun crackle from the sport exhaust
       if(S.engine==="running" && S.rpm>2200 && S.pedal<0.05 && (S.decelCut||S.limiter)){
         const sport=S.gear==="S"||S.manual;
-        const rate=S.limiter?2.5:S.popWin*(sport?4:1.6)+(S.rpm>3800&&sport?0.35:0);
+        const rate=S.limiter?4:S.popWin*(sport?8:3.5)+(S.rpm>3500?(sport?0.9:0.3):0);
         if(Math.random()<rate*dt){ audio.event({type:"pop",amt:Math.random()}); onSimEvent({type:"pop"}); }
       }
       const kmhNow=Math.abs(S.v*3.6);
