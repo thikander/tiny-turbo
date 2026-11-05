@@ -33,7 +33,7 @@ On phones and tablets a handheld-style touch pad appears instead (toggle it with
 
 Everything else lives behind the gear button in the top-right corner. A short how-to dialog shows on the first visit; **HELP** brings it back. The dialog and mochi speak Thai by default; **TH/EN** switches language and the choice is remembered.
 
-**The game:** traffic shows up ahead as dark shapes with tail lights you can spot from far away. Change lane with `←` / `→` (or `◀` / `▶` on the pad) to get past. Hit a car and the run ends on a screen showing how far you drove; press any key or tap to go again.
+**The game:** traffic shows up ahead as dark shapes with tail lights you can spot from far away. Change lane with `←` / `→` (or `◀` / `▶` on the pad) to get past. Hit a car and the run ends on a screen showing how far you drove; press any key or tap to go again. Traffic is light, a few cars at a time; switch it off with **TRAFFIC** in settings for a plain night drive.
 
 Sound starts on the first key press or click. Use headphones or decent speakers; most of the engine note is low frequency.
 

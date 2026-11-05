@@ -194,6 +194,7 @@
   <button id="btnPause" class="mb" type="button"><i class="led"></i>PAUSE</button>
   <button id="btnKeys" class="mb on" type="button"><i class="led"></i>KEYS</button>
   <button id="btnPad" class="mb" type="button"><i class="led"></i>PAD</button>
+  <button id="btnTraffic" class="mb" type="button"><i class="led"></i>TRAFFIC</button>
   <button id="btnHelp" class="mb" type="button">HELP</button>
   <button id="btnLang" class="mb" type="button" aria-label="Language"><b>TH</b>/EN</button>
   <button id="btnFull" class="mb" type="button">FULL</button>
@@ -761,7 +762,7 @@ registerProcessor('engine-synth', EngineProc);`;
   const rc=roadCanvas.getContext("2d",{alpha:false});
   rc.imageSmoothingEnabled=false;
   const RW=320, RH=140, HZ=50, CAM_H=1.25;
-  const road={ pos:0, k:0, kT:0, nextK:250, heading:0, camX:-1.8, lane:0, laneT:0, bump:0, bumpKick:false };
+  const road={ pos:0, k:0, kT:0, nextK:250, heading:0, camX:-1.8, latV:0, lane:0, laneT:0, bump:0, bumpKick:false };
   const hash=n=>{ const x=Math.sin(n*127.1+311.7)*43758.5453; return x-Math.floor(x); };
   const STARS=[]; for(let i=0;i<80;i++) STARS.push([hash(i)*640|0, hash(i+99)*(HZ-8)|0, hash(i+7)]);
   const MTN=new Float32Array(640), HILL=new Float32Array(640);
@@ -794,10 +795,13 @@ registerProcessor('engine-synth', EngineProc);`;
     let want=-1;
     if(kmh>8){
       want=ui.right&&road.lane===0?1:ui.left&&road.lane===1?0:-1;
-      if(want>=0){ road.laneT+=dt; if(road.laneT>0.08){ road.lane=want; road.laneT=0; road.changing=true; } } else road.laneT=0;
+      if(want>=0){ road.laneT+=dt; if(road.laneT>0.6){ road.lane=want; road.laneT=0; road.changing=true; } } else road.laneT=0;
     }
-    const tx=road.lane?1.8:-1.8, rate=dt*clamp(1.5+Math.abs(kmh)/22,0,6.5)*clamp(Math.abs(kmh)/12,0,1);
-    road.camX+=clamp(tx-road.camX,-rate,rate);
+    const tx=road.lane?1.8:-1.8;
+    // smooth lateral motion like a real lane change: about 2.5 s, max ~0.2 g sideways, slower at low speed
+    const sp=clamp(Math.abs(kmh)/30,0,1), w0=2.2*sp;
+    const latA=clamp((tx-road.camX)*w0*w0-(2*w0+(sp<0.05?0.6:0))*road.latV,-2.2,2.2);
+    road.latV+=latA*dt; road.camX+=road.latV*dt;
     if(road.changing && Math.abs(tx-road.camX)<0.05){
       road.changing=false;                       // lane change done: self-cancel the indicator
       if(road.lane===1) ui.right=false; else ui.left=false;
@@ -904,7 +908,8 @@ registerProcessor('engine-synth', EngineProc);`;
      can spot from far away. Change lane with ← → to get past. Hit one and the
      run ends on a clean screen showing only the distance driven.
      ===================================================================== */
-  road.cars=[]; road.spawnT=1.5; ui.runKm=0; ui.failed=false; ui.failT=0;
+  road.cars=[]; road.spawnT=3; ui.runKm=0; ui.failed=false; ui.failT=0;
+  ui.traffic=(()=>{ try{ return localStorage.getItem("mdc-traffic")!=="off"; }catch(e){ return true; } })();
   const CAR_TYPES=["sedan","sedan","hatch","hatch","suv","suv","van"];
   // tail-light layouts in metres for a 1.8 m wide car: [x, y-from-light-line, w, h]
   const LIGHTS=[
@@ -933,12 +938,13 @@ registerProcessor('engine-synth', EngineProc);`;
   }
   function updateTraffic(dt){
     if(ui.failed) return;
+    if(!ui.traffic){ road.cars.length=0; return; }
     if(S.ignition) ui.runKm+=Math.abs(S.v)*dt/1000;
     const cars=road.cars;
     for(const c of cars){
       let target=c.cruise;
       c.brakeT-=dt; if(c.brakeT>0) target=c.cruise*0.55;
-      else if(Math.random()<dt*0.035) c.brakeT=0.8+Math.random()*1.6;
+      else if(Math.random()<dt*0.006) c.brakeT=0.8+Math.random()*1.4;
       let lead=null;
       for(const o of cars) if(o!==c&&o.lane===c.lane&&o.pos>c.pos&&(!lead||o.pos<lead.pos)) lead=o;
       if(lead&&lead.pos-c.pos<35) target=Math.min(target,lead.v*(lead.pos-c.pos<16?0.8:1));
@@ -947,9 +953,9 @@ registerProcessor('engine-synth', EngineProc);`;
       c.pos+=c.v*dt;
     }
     road.cars=cars.filter(c=>c.pos-road.pos<360&&c.pos-road.pos>-40);
-    const kmh=S.v*3.6, want=Math.min(8,2+Math.floor(ui.runKm*1.6));
+    const kmh=S.v*3.6, want=ui.runKm<0.5?1:Math.min(3,1+Math.floor(ui.runKm/2));
     road.spawnT-=dt;
-    if(kmh>15&&road.cars.length<want&&road.spawnT<=0){ spawnCar(); road.spawnT=0.7+Math.random()*1.6; }
+    if(kmh>15&&road.cars.length<want&&road.spawnT<=0){ spawnCar(); road.spawnT=6+Math.random()*10; }
     // collision: our front bumper is ~2.2 m ahead of the camera
     for(const c of road.cars){
       const dz=c.pos-road.pos;
@@ -966,10 +972,10 @@ registerProcessor('engine-synth', EngineProc);`;
   }
   function restartRun(){
     ui.failed=false; failEl.classList.remove("show");
-    road.cars=[]; road.spawnT=1.5; ui.runKm=0;
+    road.cars=[]; road.spawnT=3; ui.runKm=0;
     S.v=0; S.lock=false; S.pedal=0; S.brake=0;
     if(S.engine==="running"){ S.w=S.P.idle*Math.PI/30; S.rpm=S.P.idle; }
-    road.camX=road.lane?1.8:-1.8; road.changing=false;
+    road.camX=road.lane?1.8:-1.8; road.latV=0; road.changing=false;
     keys.clear();
   }
   failEl.addEventListener("pointerdown",e=>{ e.preventDefault(); if(ui.failT>0.8) restartRun(); });
@@ -1259,6 +1265,13 @@ registerProcessor('engine-synth', EngineProc);`;
   $("btnTrip").addEventListener("click",()=>{ S.trip=0; pulse($("btnTrip"),"TRIP 0.0"); });
   function toggle(id,fn){ const b=$(id); b.addEventListener("click",()=>{ const on=!b.classList.contains("on"); b.classList.toggle("on",on); fn(on); }); return b; }
   const pauseBtn=toggle("btnPause",on=>{ ui.paused=on; });
+  const trafficBtn=$("btnTraffic"); trafficBtn.classList.toggle("on",ui.traffic);
+  trafficBtn.addEventListener("click",()=>{
+    ui.traffic=!ui.traffic; trafficBtn.classList.toggle("on",ui.traffic);
+    try{ localStorage.setItem("mdc-traffic",ui.traffic?"on":"off"); }catch(e){}
+    if(!ui.traffic){ road.cars.length=0; if(ui.failed) restartRun(); }
+    road.spawnT=3;
+  });
   toggle("btnKeys",on=>hintEl.classList.toggle("hidden",!on));
   const fullBtn=$("btnFull");
   fullBtn.addEventListener("click",()=>{ if(document.fullscreenElement) document.exitFullscreen(); else if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen(); });
